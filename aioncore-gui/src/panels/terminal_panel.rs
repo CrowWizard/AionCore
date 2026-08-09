@@ -109,6 +109,19 @@ impl TerminalPanel {
         self.working_directory.clone()
     }
 
+    pub fn switch_workspace(&mut self, path: std::path::PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if self.working_directory.as_ref() == Some(&path) {
+            return;
+        }
+
+        self.working_directory = Some(path);
+        self.terminal = None;
+        self.terminal_view = None;
+        self.status = TerminalStatus::Initializing;
+        self.initialize_terminal(window, cx);
+        cx.notify();
+    }
+
     /// Initialize the terminal in the background
     fn initialize_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let shell = Self::platform_shell();

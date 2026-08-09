@@ -8,7 +8,7 @@ use gpui_component::{
     h_flex, v_flex,
 };
 
-use crate::{AppState, core::aioncore::ProjectState, panels::dock_panel::DockPanel};
+use crate::{AppState, SelectProjectWorkspace, core::aioncore::ProjectState, panels::dock_panel::DockPanel};
 
 pub struct ProjectPanel {
     focus_handle: FocusHandle,
@@ -64,25 +64,49 @@ impl ProjectPanel {
         .detach();
     }
 
-    fn select(&mut self, project_id: String, cx: &mut Context<Self>) {
+    fn select(&mut self, project_id: String, window: &mut Window, cx: &mut Context<Self>) {
         let Some(store) = AppState::global(cx).project_store().cloned() else {
             return;
         };
         let view = cx.entity().downgrade();
+        let window_handle = window.window_handle();
         cx.spawn(async move |_, cx| {
-            let _ = store.select(&project_id).await;
+            let result = store.select(&project_id).await;
             let snapshot = store.snapshot();
             let _ = cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
                     view.update(cx, |this, cx| {
                         this.state = snapshot;
+                        if result.is_err() {
+                            this.state.error = Some("Unable to load project workspace".to_owned());
+                        }
                         cx.notify();
                     });
                 }
             });
+
+            if result.is_ok() {
+                let Some(workspace) = workspace_path(&store.snapshot()) else {
+                    return;
+                };
+                let _ = cx.update_window(window_handle, |_, window, cx| {
+                    window.dispatch_action(Box::new(SelectProjectWorkspace(workspace)), cx);
+                });
+            }
         })
         .detach();
     }
+}
+
+fn workspace_path(state: &ProjectState) -> Option<std::path::PathBuf> {
+    let project = state.project.as_ref()?;
+    project
+        .explorer
+        .entries
+        .iter()
+        .find(|entry| entry.pe_id == project.explorer.workspace_pe_id && entry.runtime_status == "available")
+        .map(|entry| std::path::PathBuf::from(&entry.display_path))
+        .filter(|path| path.is_dir())
 }
 
 impl Focusable for ProjectPanel {
@@ -125,7 +149,7 @@ impl Render for ProjectPanel {
                     .when(selected, |button| button.primary())
                     .when(!selected, |button| button.outline())
                     .small()
-                    .on_click(cx.listener(move |this, _, _, cx| this.select(project_id.clone(), cx))),
+                    .on_click(cx.listener(move |this, _, window, cx| this.select(project_id.clone(), window, cx))),
             );
         }
         if self.state.projects.is_empty() && !self.state.is_loading {

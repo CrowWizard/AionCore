@@ -114,6 +114,10 @@ impl PanelAction {
 #[action(namespace = agent_studio, no_json)]
 pub struct TogglePanelVisible(pub SharedString);
 
+#[derive(Action, Clone, PartialEq)]
+#[action(namespace = agent_studio, no_json)]
+pub struct SelectProjectWorkspace(pub PathBuf);
+
 /// 添加会话面板
 ///
 /// 用于创建并添加一个新的会话面板到工作区

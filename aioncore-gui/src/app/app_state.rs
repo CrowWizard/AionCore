@@ -47,6 +47,7 @@ pub struct AppState {
 impl AppState {
     pub fn init(cx: &mut App) {
         let services = ServiceRegistry::new(EventHub::new());
+        let current_working_dir = Self::resolve_initial_working_dir();
 
         let state = Self {
             invisible_panels: cx.new(|_| Vec::new()),
@@ -58,7 +59,7 @@ impl AppState {
             core_connection: None,
             services,
             welcome_session: None,
-            current_working_dir: Self::resolve_initial_working_dir(),
+            current_working_dir,
             tool_call_preview_max_lines: DEFAULT_TOOL_CALL_PREVIEW_MAX_LINES,
             selected_tool_call: cx.new(|_| None),
             app_title: SharedString::from(""),
@@ -176,6 +177,16 @@ impl AppState {
     pub fn set_current_working_dir(&mut self, path: PathBuf) {
         log::info!("Setting current working directory: {:?}", path);
         self.current_working_dir = path;
+    }
+
+    pub fn select_project_workspace(&mut self, path: PathBuf) -> bool {
+        if self.current_working_dir == path {
+            return false;
+        }
+
+        log::info!("Selected AionCore project workspace: {:?}", path);
+        self.current_working_dir = path;
+        true
     }
 
     /// Get the tool call preview line limit

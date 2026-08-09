@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 const EXCLUDED_PANELS: &[&str] = &["CodeEditorPanel", "ToolCallDetailPanel"];
 
 use crate::{
-    AppSettings, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
+    AppSettings, AppState, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
     core::updater::{UpdateCheckResult, UpdateManager},
     panels::dock_panel::DockPanelContainer,
 };
@@ -231,6 +231,44 @@ impl DockWorkspace {
         self.last_layout_state = Some(state);
     }
 
+    pub(crate) fn switch_project_workspace(&mut self, path: std::path::PathBuf, window: &mut Window, cx: &mut App) {
+        if !AppState::global_mut(cx).select_project_workspace(path.clone()) {
+            return;
+        }
+
+        let terminal_panels = Self::terminal_panels(&self.dock_area.read(cx).center().clone(), cx);
+        for panel in terminal_panels {
+            let Ok(container) = panel.view().downcast::<DockPanelContainer>() else {
+                continue;
+            };
+            container.update(cx, |container, cx| {
+                container.switch_terminal_workspace(path.clone(), window, cx);
+            });
+        }
+
+        self.last_layout_state = None;
+    }
+
+    fn terminal_panels(item: &DockItem, cx: &App) -> Vec<std::sync::Arc<dyn gpui_component::dock::PanelView>> {
+        match item {
+            DockItem::Tabs { items, .. } => items
+                .iter()
+                .filter(|panel| Self::is_terminal_panel(panel, cx))
+                .cloned()
+                .collect(),
+            DockItem::Split { items, .. } => items.iter().flat_map(|item| Self::terminal_panels(item, cx)).collect(),
+            DockItem::Panel { view, .. } if Self::is_terminal_panel(view, cx) => vec![view.clone()],
+            DockItem::Panel { .. } | DockItem::Tiles { .. } => Vec::new(),
+        }
+    }
+
+    fn is_terminal_panel(panel: &std::sync::Arc<dyn gpui_component::dock::PanelView>, cx: &App) -> bool {
+        let Ok(container) = panel.view().downcast::<DockPanelContainer>() else {
+            return false;
+        };
+        container.read(cx).agent_studio_klass.as_deref() == Some("TerminalPanel")
+    }
+
     fn save_state(state: &DockAreaState) -> Result<()> {
         println!("Save Docks layout...");
         let json = serde_json::to_string_pretty(state)?;
@@ -432,6 +470,7 @@ impl Render for DockWorkspace {
         div()
             .id("agent_studio-workspace")
             .on_action(cx.listener(Self::on_action_panel_action))
+            .on_action(cx.listener(Self::on_action_select_project_workspace))
             .on_action(cx.listener(Self::on_action_toggle_panel_visible))
             .on_action(cx.listener(Self::on_action_toggle_dock_toggle_button))
             .on_action(cx.listener(Self::on_action_open_setting_panel))

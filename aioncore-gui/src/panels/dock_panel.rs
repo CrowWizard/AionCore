@@ -308,6 +308,20 @@ impl DockPanelContainer {
         view
     }
 
+    pub fn switch_terminal_workspace(&mut self, path: std::path::PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        if self.agent_studio_klass.as_deref() != Some("TerminalPanel") {
+            return;
+        }
+        let Some(agent_studio) = self.agent_studio.clone() else {
+            return;
+        };
+        let Ok(terminal) = agent_studio.downcast::<TerminalPanel>() else {
+            return;
+        };
+
+        terminal.update(cx, |terminal, cx| terminal.switch_workspace(path, window, cx));
+    }
+
     pub fn panel_from_state(agent_state: &DockPanelState, window: &mut Window, cx: &mut App) -> Entity<Self> {
         match agent_state.agent_studio_klass.as_ref() {
             "SessionManagerPanel" => Self::panel::<SessionManagerPanel>(window, cx),

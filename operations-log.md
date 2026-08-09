@@ -15,3 +15,10 @@
 - 将团队事件空轮询改为 `smol::Timer`，避免 GPUI executor 使用 Tokio timer。
 - panic 日志追加强制捕获的 backtrace，便于后续定位。
 - 已使用 `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 完成定向编译检查。
+
+## 2026-08-09 AionCore 项目目录切换
+
+- 项目面板点击项目后，会解析其已授权且可用的 workspace 根目录。
+- 已加入项目 workspace 切换 action，切换 GUI 全局工作目录。
+- 已打开终端会自动以所选项目目录重新启动，运行中的终端命令会被中断。
+- 已完成 `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。

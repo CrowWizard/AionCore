@@ -6,8 +6,8 @@ use gpui_component::{
 use std::sync::Arc;
 
 use crate::{
-    AppState, ConversationPanel, OpenSessionManager, PanelAction, SessionManagerPanel, ToggleDockToggleButton,
-    TogglePanelVisible,
+    AppState, ConversationPanel, OpenSessionManager, PanelAction, SelectProjectWorkspace, SessionManagerPanel,
+    ToggleDockToggleButton, TogglePanelVisible,
     app::actions::{PanelCommand, PanelKind, Submit},
     panels::{
         DockPanel,
@@ -434,6 +434,15 @@ impl DockWorkspace {
                 log::debug!("Auto-expanded {:?} dock for terminal panel", placement);
             }
         });
+    }
+
+    pub(in crate::workspace) fn on_action_select_project_workspace(
+        &mut self,
+        action: &SelectProjectWorkspace,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.switch_project_workspace(action.0.clone(), window, cx);
     }
 
     /// Handle TogglePanelVisible action - show/hide panels in the UI
