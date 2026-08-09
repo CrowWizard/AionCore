@@ -141,54 +141,74 @@ impl CoreClient {
         file_name: &str,
         conversation_id: &str,
     ) -> Result<String, CoreClientError> {
-        let data = tokio::fs::read(path).await.map_err(|_| CoreClientError::Transport)?;
-        let part = reqwest::multipart::Part::bytes(data).file_name(file_name.to_owned());
-        let form = reqwest::multipart::Form::new()
-            .part("file", part)
-            .text("file_name", file_name.to_owned())
-            .text("conversation_id", conversation_id.to_owned());
-        let response = self
-            .http
-            .post(self.endpoint("/api/fs/upload")?)
-            .multipart(form)
-            .send()
+        let path = path.to_path_buf();
+        let file_name = file_name.to_owned();
+        let conversation_id = conversation_id.to_owned();
+        let client = self.http.clone();
+        let url = self.endpoint("/api/fs/upload")?;
+
+        runtime()
+            .spawn(async move {
+                let data = tokio::fs::read(path).await.map_err(|_| CoreClientError::Transport)?;
+                let part = reqwest::multipart::Part::bytes(data).file_name(file_name.clone());
+                let form = reqwest::multipart::Form::new()
+                    .part("file", part)
+                    .text("file_name", file_name)
+                    .text("conversation_id", conversation_id);
+                let response = client
+                    .post(url)
+                    .multipart(form)
+                    .send()
+                    .await
+                    .map_err(|error| map_transport_error(&error))?;
+                let status = response.status();
+                let payload = response.text().await.map_err(|_| CoreClientError::Decode)?;
+                if !status.is_success() {
+                    return Err(map_http_error(status, serde_json::from_str(&payload).ok()));
+                }
+                let response: ApiResponse<String> =
+                    serde_json::from_str(&payload).map_err(|_| CoreClientError::Decode)?;
+                response.data.ok_or(CoreClientError::Decode)
+            })
             .await
-            .map_err(|error| map_transport_error(&error))?;
-        let status = response.status();
-        let payload = response.text().await.map_err(|_| CoreClientError::Decode)?;
-        if !status.is_success() {
-            return Err(map_http_error(status, serde_json::from_str(&payload).ok()));
-        }
-        let response: ApiResponse<String> = serde_json::from_str(&payload).map_err(|_| CoreClientError::Decode)?;
-        response.data.ok_or(CoreClientError::Decode)
+            .map_err(|_| CoreClientError::Transport)?
     }
 
     pub async fn request_json<T>(&self, method: Method, path: &str, body: Option<Value>) -> Result<T, CoreClientError>
     where
-        T: DeserializeOwned,
+        T: DeserializeOwned + Send + 'static,
     {
         let url = self.endpoint(path)?;
         let method_name = method.as_str().to_owned();
-        let mut request = self.http.request(method, url);
-        if let Some(body) = body {
-            let body = serde_json::to_vec(&body).map_err(|_| CoreClientError::Decode)?;
-            request = request.header("content-type", "application/json").body(body);
-        }
+        let path = path.to_owned();
+        let client = self.http.clone();
+        let events = self.events.clone();
 
-        let response = request.send().await.map_err(|error| {
-            let mapped = map_transport_error(&error);
-            self.record_request_failure(method_name.clone(), path, &mapped);
-            mapped
-        })?;
-        let status = response.status();
-        let payload = response.text().await.map_err(|_| CoreClientError::Decode)?;
-        if !status.is_success() {
-            let error = map_http_error(status, serde_json::from_str(&payload).ok());
-            self.record_request_failure(method_name, path, &error);
-            return Err(error);
-        }
+        runtime()
+            .spawn(async move {
+                let mut request = client.request(method, url);
+                if let Some(body) = body {
+                    let body = serde_json::to_vec(&body).map_err(|_| CoreClientError::Decode)?;
+                    request = request.header("content-type", "application/json").body(body);
+                }
 
-        serde_json::from_str(&payload).map_err(|_| CoreClientError::Decode)
+                let response = request.send().await.map_err(|error| {
+                    let mapped = map_transport_error(&error);
+                    record_request_failure(&events, method_name.clone(), &path, &mapped);
+                    mapped
+                })?;
+                let status = response.status();
+                let payload = response.text().await.map_err(|_| CoreClientError::Decode)?;
+                if !status.is_success() {
+                    let error = map_http_error(status, serde_json::from_str(&payload).ok());
+                    record_request_failure(&events, method_name, &path, &error);
+                    return Err(error);
+                }
+
+                serde_json::from_str(&payload).map_err(|_| CoreClientError::Decode)
+            })
+            .await
+            .map_err(|_| CoreClientError::Transport)?
     }
 
     pub fn connect(&self) -> ConnectionHandle {
@@ -220,19 +240,19 @@ impl CoreClient {
         url.set_query(None);
         url
     }
+}
 
-    fn record_request_failure(&self, method: String, path: &str, error: &CoreClientError) {
-        let status = match error {
-            CoreClientError::Http { status, .. } => Some(status.as_u16()),
-            _ => None,
-        };
-        log::warn!("AionCore request failed: method={method}, path={path}, status={status:?}");
-        self.events.publish(CoreEvent::RequestFailed {
-            method,
-            path: path.to_owned(),
-            status,
-        });
-    }
+fn record_request_failure(events: &CoreEventHub, method: String, path: &str, error: &CoreClientError) {
+    let status = match error {
+        CoreClientError::Http { status, .. } => Some(status.as_u16()),
+        _ => None,
+    };
+    log::warn!("AionCore request failed: method={method}, path={path}, status={status:?}");
+    events.publish(CoreEvent::RequestFailed {
+        method,
+        path: path.to_owned(),
+        status,
+    });
 }
 
 fn runtime() -> &'static tokio::runtime::Runtime {

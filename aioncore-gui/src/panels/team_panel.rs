@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement as _, Render, Styled, Window,
     prelude::FluentBuilder, px,
@@ -134,7 +136,7 @@ impl TeamPanel {
                     }
                 }
                 let Some((name, data)) = received else {
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    smol::Timer::after(Duration::from_millis(50)).await;
                     continue;
                 };
                 match store.apply_websocket_event(name, &data) {

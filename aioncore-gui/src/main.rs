@@ -92,6 +92,10 @@ fn init_startup_diagnostics() {
 
     panic::set_hook(Box::new(|panic_info| {
         write_startup_log(&format!("panic.detected {panic_info}"));
+        write_startup_log(&format!(
+            "panic.backtrace {}",
+            std::backtrace::Backtrace::force_capture()
+        ));
     }));
 }
 
