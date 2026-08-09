@@ -67,6 +67,15 @@ impl SettingsStore {
         }
     }
 
+    pub async fn refresh_assistants(&self) -> Result<Vec<AssistantResponse>, CoreClientError> {
+        let response: ApiResponse<Vec<AssistantResponse>> =
+            self.client.request_json(Method::GET, "/api/assistants", None).await?;
+        let assistants = response.data.ok_or(CoreClientError::Decode)?;
+        let mut state = self.state.write().expect("settings state lock poisoned");
+        state.assistants = assistants.clone();
+        Ok(assistants)
+    }
+
     pub async fn update_setting(&self, field: &str, value: Value) -> Result<SystemSettingsResponse, CoreClientError> {
         let mut body = serde_json::Map::new();
         body.insert(field.to_owned(), value);

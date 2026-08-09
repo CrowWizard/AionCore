@@ -22,3 +22,11 @@
 - 已加入项目 workspace 切换 action，切换 GUI 全局工作目录。
 - 已打开终端会自动以所选项目目录重新启动，运行中的终端命令会被中断。
 - 已完成 `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。
+
+## 2026-08-10 AionCode 会话创建与目录绑定
+
+- 新建 Conversation 前拉取启用的 AionCore assistants，并按 assistant 展示创建入口。
+- 创建时要求选择 workspace 目录，将其通过 `extra.workspace` 传入 Conversation API。
+- 创建请求携带 `assistant.id`，满足后端会话创建契约。
+- 默认布局移除依赖可选 Project Explorer 路由的 Project 面板，兼容不含 `/api/projects` 的后端。
+- 已完成 `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。

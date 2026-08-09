@@ -75,10 +75,16 @@ impl ConversationStore {
         result
     }
 
-    pub async fn create(&self, name: Option<String>) -> Result<ConversationResponse, CoreClientError> {
+    pub async fn create(
+        &self,
+        name: Option<String>,
+        assistant_id: String,
+        workspace: std::path::PathBuf,
+    ) -> Result<ConversationResponse, CoreClientError> {
         let request = CreateConversationRequest {
             name,
-            extra: Value::Object(Default::default()),
+            assistant: super::models::AssistantConversationRequest { id: assistant_id },
+            extra: serde_json::json!({ "workspace": workspace }),
         };
         let response: ApiResponse<ConversationResponse> = self
             .client

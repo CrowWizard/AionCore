@@ -9,7 +9,7 @@ use std::{sync::Arc, time::Duration};
 const EXCLUDED_PANELS: &[&str] = &["CodeEditorPanel", "ToolCallDetailPanel"];
 
 use crate::{
-    AppSettings, AppState, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
+    AppSettings, AppState, AppTitleBar, ConversationPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
     core::updater::{UpdateCheckResult, UpdateManager},
     panels::dock_panel::DockPanelContainer,
 };
@@ -333,7 +333,6 @@ impl DockWorkspace {
             vec![DockItem::tabs(
                 vec![
                     Arc::new(DockPanelContainer::panel::<SessionManagerPanel>(window, cx)),
-                    Arc::new(DockPanelContainer::panel::<ProjectPanel>(window, cx)),
                     Arc::new(DockPanelContainer::panel::<TeamPanel>(window, cx)),
                 ],
                 &dock_area,

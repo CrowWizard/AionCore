@@ -103,7 +103,13 @@ pub struct ConversationNameUpdatedPayload {
 #[derive(Clone, Debug, Serialize)]
 pub struct CreateConversationRequest {
     pub name: Option<String>,
+    pub assistant: AssistantConversationRequest,
     pub extra: Value,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct AssistantConversationRequest {
+    pub id: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -11,13 +11,16 @@ use gpui_component::{
 
 use crate::{
     AppState, PanelAction,
-    core::aioncore::{ConversationEventAction, ConversationState, ConversationStore},
+    core::aioncore::{AssistantResponse, ConversationEventAction, ConversationState, ConversationStore},
     panels::dock_panel::DockPanel,
+    utils,
 };
 
 pub struct SessionManagerPanel {
     focus_handle: FocusHandle,
     state: ConversationState,
+    available_assistants: Vec<AssistantResponse>,
+    loading_assistants: bool,
 }
 
 impl DockPanel for SessionManagerPanel {
@@ -47,8 +50,11 @@ impl SessionManagerPanel {
         let mut panel = Self {
             focus_handle: cx.focus_handle(),
             state: ConversationState::default(),
+            available_assistants: Vec::new(),
+            loading_assistants: false,
         };
         panel.refresh(cx);
+        panel.refresh_assistants(cx);
         panel.subscribe_events(cx);
         panel
     }
@@ -76,14 +82,44 @@ impl SessionManagerPanel {
         .detach();
     }
 
-    fn create_conversation(&mut self, cx: &mut Context<Self>) {
+    fn refresh_assistants(&mut self, cx: &mut Context<Self>) {
+        let Some(settings_store) = AppState::global(cx).settings_store().cloned() else {
+            return;
+        };
+        self.loading_assistants = true;
+        let entity = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            let result = settings_store.refresh_assistants().await;
+            let _ = cx.update(|cx| {
+                if let Some(entity) = entity.upgrade() {
+                    entity.update(cx, |this, cx| {
+                        this.loading_assistants = false;
+                        match result {
+                            Ok(assistants) => {
+                                this.available_assistants =
+                                    assistants.into_iter().filter(|assistant| assistant.enabled).collect();
+                            }
+                            Err(_) => this.state.error = Some("Unable to load assistants".to_owned()),
+                        }
+                        cx.notify();
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn create_conversation(&mut self, assistant: AssistantResponse, window: &mut Window, cx: &mut Context<Self>) {
         let Some(store) = AppState::global(cx).conversation_store().cloned() else {
             return;
         };
         let entity = cx.entity().downgrade();
-        cx.spawn(async move |_, cx| {
-            let result = store.create(None).await;
-            let _ = cx.update(|cx| {
+        cx.spawn_in(window, async move |_, window| {
+            let Some(workspace) = utils::pick_folder("Select conversation workspace").await else {
+                return;
+            };
+            let result = store.create(None, assistant.id, workspace).await;
+            let _ = window.update(|_, cx| {
                 if let Some(entity) = entity.upgrade() {
                     entity.update(cx, |this, cx| {
                         this.state = store.snapshot();
@@ -206,11 +242,11 @@ impl Render for SessionManagerPanel {
                         h_flex()
                             .gap_1()
                             .child(
-                                Button::new("new-conversation")
-                                    .icon(Icon::new(IconName::Plus))
+                                Button::new("refresh-assistants")
+                                    .icon(Icon::new(IconName::LoaderCircle))
                                     .ghost()
                                     .small()
-                                    .on_click(cx.listener(|this, _, _, cx| this.create_conversation(cx))),
+                                    .on_click(cx.listener(|this, _, _, cx| this.refresh_assistants(cx))),
                             )
                             .child(
                                 Button::new("refresh-conversations")
@@ -229,6 +265,30 @@ impl Render for SessionManagerPanel {
                         .child(error),
                 )
             })
+            .child(
+                v_flex()
+                    .gap_1()
+                    .child(
+                        gpui::div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(if self.loading_assistants {
+                                "Loading assistants…"
+                            } else {
+                                "Create a conversation in a selected folder"
+                            }),
+                    )
+                    .children(self.available_assistants.iter().enumerate().map(|(index, assistant)| {
+                        let assistant = assistant.clone();
+                        Button::new(("new-conversation", index))
+                            .label(format!("New with {}", assistant.name))
+                            .outline()
+                            .small()
+                            .on_click(cx.listener(move |this, _, window, cx| {
+                                this.create_conversation(assistant.clone(), window, cx)
+                            }))
+                    })),
+            )
             .child(
                 gpui::div().flex_1().min_h_0().overflow_y_scrollbar().child(
                     v_flex()
