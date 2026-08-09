@@ -1,0 +1,28 @@
+# Build artifacts
+/target
+*.pdb
+.github
+# Session data
+/sessions
+/docs
+# Application state
+/docks-layout.json
+/state.json
+/workspace-config.json
+config.json.backup
+
+# IDE
+.claude
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug logs
+debug.log
+*.log

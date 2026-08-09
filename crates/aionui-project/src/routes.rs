@@ -19,8 +19,8 @@
 use std::sync::Arc;
 
 use aionui_api_types::{
-    ApiResponse, AttachFolderRequest, ProjectDetailResponse, ProjectEntry, ProjectExplorer, ResolveRefRequest,
-    ResolveRefResponse,
+    ApiResponse, AttachFolderRequest, ProjectDetailResponse, ProjectEntry, ProjectExplorer, ProjectListItemResponse,
+    ResolveRefRequest, ResolveRefResponse,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -46,11 +46,24 @@ pub struct ProjectRouterState {
 /// All routes require authentication (applied by the caller).
 pub fn project_routes(state: ProjectRouterState) -> Router {
     Router::new()
+        .route("/api/projects", get(list_projects))
         .route("/api/projects/{project_id}", get(get_project))
         .route("/api/projects/{project_id}/folders", post(attach_folder))
         .route("/api/projects/{project_id}/folders/{pe_id}", delete(remove_folder))
         .route("/api/projects/{project_id}/resolve-ref", post(resolve_ref))
         .with_state(state)
+}
+
+/// `GET /api/projects` — path-free project summaries visible to the current
+/// user, ordered by most recently updated.
+async fn list_projects(
+    State(state): State<ProjectRouterState>,
+    Extension(user): Extension<CurrentUser>,
+) -> Result<Json<ApiResponse<Vec<ProjectListItemResponse>>>, ApiError> {
+    let projects = state.project.list_projects(&user.id).await?;
+    Ok(Json(ApiResponse::ok(
+        projects.into_iter().map(to_list_item_response).collect(),
+    )))
 }
 
 /// `GET /api/projects/{project_id}` — full project detail + all roots in one
@@ -144,6 +157,16 @@ async fn remove_folder(
 }
 
 // ── mapping: domain → wire DTO ───────────────────────────────────────────────
+
+fn to_list_item_response(item: crate::types::ProjectListItem) -> ProjectListItemResponse {
+    ProjectListItemResponse {
+        project_id: item.id,
+        name: item.name,
+        kind: item.kind,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+    }
+}
 
 fn to_detail_response(detail: ProjectDetail) -> ProjectDetailResponse {
     ProjectDetailResponse {

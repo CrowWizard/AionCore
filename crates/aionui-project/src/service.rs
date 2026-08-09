@@ -10,8 +10,8 @@ use crate::canonical::{self, Canonical};
 use crate::containment;
 use crate::scm::ScmInbound;
 use crate::types::{
-    AttachInput, FolderDto, ProjectDetail, ProjectError, ProjectExplorerEntry, ProjectExplorerView, ReferenceInput,
-    ResolveOutput, ResolvedResource, RuntimeStatus,
+    AttachInput, FolderDto, ProjectDetail, ProjectError, ProjectExplorerEntry, ProjectExplorerView, ProjectListItem,
+    ReferenceInput, ResolveOutput, ResolvedResource, RuntimeStatus,
 };
 
 /// Orchestrates the three project-bind tables through an injected
@@ -259,6 +259,20 @@ impl ProjectService {
     }
 
     // ── reads ──────────────────────────────────────────────────────────
+
+    pub async fn list_projects(&self, user_id: &str) -> Result<Vec<ProjectListItem>, ProjectError> {
+        let projects = self.store.list_projects(user_id).await?;
+        Ok(projects
+            .into_iter()
+            .map(|project| ProjectListItem {
+                id: project.project_id,
+                name: project.name,
+                kind: project.kind,
+                created_at: project.created_at,
+                updated_at: project.updated_at,
+            })
+            .collect())
+    }
 
     pub async fn get_project(&self, user_id: &str, project_id: &str) -> Result<ProjectDetail, ProjectError> {
         let project =

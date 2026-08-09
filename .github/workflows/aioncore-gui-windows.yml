@@ -1,0 +1,57 @@
+name: AionCore GUI Windows
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "aioncore-gui/**"
+      - ".github/workflows/aioncore-gui-windows.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "aioncore-gui/**"
+      - ".github/workflows/aioncore-gui-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: "600"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  build:
+    name: Build Windows x64 GUI
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: aioncore-gui
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: aioncore-gui
+          shared-key: aioncore-gui-windows-x64
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Build release binary
+        run: cargo build --release --bin aioncore-gui
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: aioncore-gui-windows-x64
+          path: aioncore-gui/target/release/aioncore-gui.exe
+          if-no-files-found: error
+          retention-days: 14

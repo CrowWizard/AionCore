@@ -1,0 +1,218 @@
+[workspace]
+members = [
+    ".",
+    "crates/agentx-types",
+    "crates/agentx-event-bus",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Internal crates
+agentx-types = { path = "crates/agentx-types" }
+agentx-event-bus = { path = "crates/agentx-event-bus" }
+agentx-agent = { path = "crates/agentx-agent" }
+agentx-services = { path = "crates/agentx-services" }
+
+# Agent communication
+agent-client-protocol = { version = "0.13.1", features = ["unstable"] }
+
+# Core GPUI framework
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui-component = { git = "https://github.com/sxhxliang/gpui-component", branch = "dev" }
+gpui_term = { git = "https://github.com/sxhxliang/gpui-term" }
+# gpui-component = { path = "../crates/ui" }
+
+# Async runtime
+tokio = { version = "1.48.0" }
+tokio-util = { version = "0.7.17", features = ["compat"] }
+async-trait = "0.1"
+smol = "2"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling and logging
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+
+# Utilities
+uuid = { version = "1.11", features = ["v4"] }
+dirs = "6.0"
+which = "7.0"
+similar = { version = "2.6", features = ["text"] }
+
+[workspace.lints.rust]
+dead_code = "allow"
+unused_variables = "allow"
+unused_imports = "allow"
+
+[workspace.lints.clippy]
+style = { level = "allow", priority = -1 }
+module_inception = "allow"
+too_many_arguments = "allow"
+type_complexity = "allow"
+
+[package]
+name = "aioncore-gui"
+version = "0.1.0"
+edition = "2024"
+description = "AionCore desktop client built with GPUI"
+license = "Apache-2.0"
+publish = false
+authors = ["AionCore Contributors"]
+readme = "README.md"
+
+[package.metadata.bundle]
+name = "AionCore GUI"
+identifier = "org.aioncore.gui"
+icon = ["assets/logo1024x1024@2x.png", "assets/logo.ico"]
+version = "0.1.0"
+copyright = "Copyright (c) 2026 AionCore Contributors"
+category = "Developer Tool"
+short_description = "AionCore desktop client"
+long_description = "AionCore desktop client built with GPUI."
+
+[package.metadata.bundle.windows]
+icon = ["assets/logo.ico"]
+
+[package.metadata.i18n]
+available-locales = ["en", "zh-CN"]
+default-locale = "en"
+load-path = "locales"
+
+[[bin]]
+name = "aioncore-gui"
+path = "src/main.rs"
+
+[features]
+default = ["unstable"]
+unstable = []
+tray = ["dep:gtk", "dep:tray-icon"]
+
+[dependencies]
+# Internal crates
+agentx-event-bus.workspace = true
+agentx-types.workspace = true
+
+# Core GPUI framework
+gpui.workspace = true
+gpui_platform.workspace = true
+gpui-component.workspace = true
+gpui_term.workspace = true
+
+# Agent communication
+agent-client-protocol.workspace = true
+
+# Async runtime
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "process", "fs", "io-util", "sync", "time", "net"] }
+tokio-util.workspace = true
+async-trait.workspace = true
+smol.workspace = true
+
+# HTTP client (embedded)
+reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    "multipart",
+    "rustls-tls-native-roots",
+    "socks",
+    "stream",
+], package = "zed-reqwest", version = "0.12.15-zed" }
+rustls = "0.23.26"
+rustls-platform-verifier = "0.5.0"
+bytes = "1.0"
+futures = "0.3"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json.workspace = true
+
+# Error handling and logging
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+
+# Language support
+tree-sitter-navi = "0.2.2"
+color-lsp = "0.2.0"
+lsp-types = { version = "0.97.0", features = ["proposed"] }
+
+# Utilities
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+autocorrect = "2.14.2"
+chrono.workspace = true
+rfd = "0.15"
+uuid.workspace = true
+rust-i18n = "3"
+similar = { version = "2.6", features = ["text"] }
+regex = "1"
+base64 = "0.22"
+which.workspace = true
+image = "0.25"
+dirs.workspace = true
+sys-locale = "0.3"
+
+# System tray
+tray-icon = { version = "0.19", optional = true }
+
+# Linux-only: GTK for optional tray icon initialization
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = { version = "0.18", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Pin macOS font stack to avoid core-graphics version skew with gpui/zed-font-kit.
+core-text = "=21.0.0"
+core-graphics = "=0.24.0"
+
+[lints.rust]
+dead_code = "allow"
+unused_variables = "allow"
+unused_imports = "allow"
+
+[lints.clippy]
+almost_complete_range = "allow"
+arc_with_non_send_sync = "allow"
+borrowed_box = "allow"
+dbg_macro = "deny"
+let_underscore_future = "allow"
+manual_is_multiple_of = "allow"
+map_entry = "allow"
+module_inception = "allow"
+non_canonical_partial_ord_impl = "allow"
+reversed_empty_ranges = "allow"
+single_range_in_vec_init = "allow"
+style = { level = "allow", priority = -1 }
+todo = "allow"
+type_complexity = "allow"
+needless_update = "allow"
+option_map_unit_fn = "allow"
+too_many_arguments = "allow"
+mutable_key_type = "allow"
+
+[profile.dev]
+opt-level = 1            # 轻量优化，平衡编译速度和文件大小
+codegen-units = 16       # 保持快速编译
+debug = "limited"        # 有限的调试信息
+split-debuginfo = "unpacked"
+strip = "debuginfo"      # 移除调试信息但保留符号表
+
+[profile.dev.package]
+resvg = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+
+[profile.release]
+opt-level = "z"          # 优化目标为大小 (size optimization)
+lto = "fat"              # 完整的链接时优化 (full LTO)
+codegen-units = 1        # 最小化编译单元以获得最佳优化
+strip = true             # 自动移除符号和调试信息
+panic = "abort"          # 使用 abort 代替 unwind，减少二进制大小

@@ -101,6 +101,45 @@ async fn create_project_with_workspace_entry_falls_back_on_workspace_conflict() 
 }
 
 #[tokio::test]
+async fn list_projects_is_scoped_to_owner_and_ordered_by_latest_update() {
+    let (store, _db) = store().await;
+    let first_folder = store.upsert_folder("file:///first", "file:///first").await.unwrap();
+    let second_folder = store.upsert_folder("file:///second", "file:///second").await.unwrap();
+    let other_folder = store.upsert_folder("file:///other", "file:///other").await.unwrap();
+
+    let (first, _) = store
+        .create_project_with_workspace_entry(
+            "system_default_user",
+            &first_folder.folder_id,
+            "First",
+            ProjectKind::Standard,
+        )
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    let (second, _) = store
+        .create_project_with_workspace_entry(
+            "system_default_user",
+            &second_folder.folder_id,
+            "Second",
+            ProjectKind::Temp,
+        )
+        .await
+        .unwrap();
+    store
+        .create_project_with_workspace_entry("other_user", &other_folder.folder_id, "Other", ProjectKind::Standard)
+        .await
+        .unwrap();
+
+    let projects = store.list_projects("system_default_user").await.unwrap();
+
+    assert_eq!(projects.len(), 2);
+    assert_eq!(projects[0].project_id, second.project_id);
+    assert_eq!(projects[1].project_id, first.project_id);
+    assert_eq!(projects[0].kind, "temp");
+}
+
+#[tokio::test]
 async fn list_entries_returns_workspace_and_attached_with_folders() {
     let (store, _db) = store().await;
     let ws_folder = store.upsert_folder("file:///ws", "file:///ws").await.unwrap();

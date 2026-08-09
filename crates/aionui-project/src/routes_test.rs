@@ -114,6 +114,25 @@ async fn upload_path_outside_root_maps_to_400_with_stable_code() {
 }
 
 #[tokio::test]
+async fn list_projects_returns_path_free_summaries_for_current_user() {
+    let (router, project_id, _workspace_pe_id, _dir, _db) = setup().await;
+
+    let (status, body) = send(&router, "GET", "/api/projects", None).await;
+
+    assert_eq!(status, StatusCode::OK);
+    let projects = body["data"].as_array().unwrap();
+    assert_eq!(projects.len(), 1);
+    assert_eq!(projects[0]["project_id"], project_id);
+    assert!(!projects[0]["name"].as_str().unwrap().is_empty());
+    assert_eq!(projects[0]["kind"], "standard");
+    assert!(projects[0].get("created_at").is_some());
+    assert!(projects[0].get("updated_at").is_some());
+    assert!(projects[0].get("explorer").is_none());
+    assert!(!body.to_string().contains("resource_uri"));
+    assert!(!body.to_string().contains("resource_canonical"));
+}
+
+#[tokio::test]
 async fn get_project_returns_workspace_root() {
     let (router, project_id, workspace_pe_id, _dir, _db) = setup().await;
 

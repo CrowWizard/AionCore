@@ -78,6 +78,16 @@ pub struct ProjectExplorerView {
     pub entries: Vec<ProjectExplorerEntry>,
 }
 
+/// Path-free project summary returned by `list_projects`.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectListItem {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub created_at: TimestampMs,
+    pub updated_at: TimestampMs,
+}
+
 /// Aggregated project detail returned by `get_project`.
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectDetail {

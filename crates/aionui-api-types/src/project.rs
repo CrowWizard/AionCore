@@ -14,6 +14,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::chat_file::ChatFileRef;
 
+/// One project available to the authenticated user. The client uses this
+/// path-free summary to choose which detail document to load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectListItemResponse {
+    pub project_id: String,
+    pub name: String,
+    /// One of `standard` or `temp`.
+    pub kind: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
 /// Aggregated project detail — everything the explorer needs in one call,
 /// so the frontend never fans out one request per root.
 #[derive(Debug, Clone, Serialize, Deserialize)]
