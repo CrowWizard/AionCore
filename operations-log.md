@@ -30,3 +30,10 @@
 - 创建请求携带 `assistant.id`，满足后端会话创建契约。
 - 默认布局移除依赖可选 Project Explorer 路由的 Project 面板，兼容不含 `/api/projects` 的后端。
 - 已完成 `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。
+
+## 2026-08-10 aionrs 持久会话列表
+
+- 新增受认证保护的 `GET /api/aionrs/sessions`，由 AionCore 读取 `<data-dir>/aionrs-sessions` 并仅返回 aionrs session 元数据。
+- 响应不包含模型消息内容、工具输入输出或 API 密钥，避免暴露持久化文件的敏感内容。
+- GUI Conversations 面板新增 Saved aionrs Sessions 区块，展示摘要、模型、消息数、更新时间和 session ID，并支持手动刷新。
+- 已完成后端 `cargo check -p aionui-api-types -p aionui-ai-agent -p aionui-app` 与 GUI `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。

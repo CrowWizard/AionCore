@@ -231,6 +231,16 @@ pub struct SkillListItemResponse {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AionrsSessionResponse {
+    pub id: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub model: String,
+    pub summary: String,
+    pub message_count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct AssistantResponse {
     pub id: String,
     pub name: String,

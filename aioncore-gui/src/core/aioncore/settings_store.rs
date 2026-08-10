@@ -4,7 +4,9 @@ use reqwest::Method;
 use serde_json::{Value, json};
 
 use super::client::{CoreClient, CoreClientError};
-use super::models::{ApiResponse, AssistantResponse, SkillListItemResponse, SystemSettingsResponse};
+use super::models::{
+    AionrsSessionResponse, ApiResponse, AssistantResponse, SkillListItemResponse, SystemSettingsResponse,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct SettingsState {
@@ -74,6 +76,14 @@ impl SettingsStore {
         let mut state = self.state.write().expect("settings state lock poisoned");
         state.assistants = assistants.clone();
         Ok(assistants)
+    }
+
+    pub async fn list_aionrs_sessions(&self) -> Result<Vec<AionrsSessionResponse>, CoreClientError> {
+        let response: ApiResponse<Vec<AionrsSessionResponse>> = self
+            .client
+            .request_json(Method::GET, "/api/aionrs/sessions", None)
+            .await?;
+        response.data.ok_or(CoreClientError::Decode)
     }
 
     pub async fn update_setting(&self, field: &str, value: Value) -> Result<SystemSettingsResponse, CoreClientError> {

@@ -6,6 +6,7 @@ mod acp_prompt_hook;
 mod agent_build_extra;
 mod agent_discovery;
 mod agent_error;
+mod aionrs_session;
 mod antigravity_hook;
 mod ask;
 mod assistant;
@@ -55,6 +56,7 @@ pub use agent_error::{
     AgentErrorCode, AgentErrorOwnership, AgentErrorResolution, AgentErrorResolutionKind, AgentErrorResolutionTarget,
     AgentStreamErrorData,
 };
+pub use aionrs_session::AionrsSessionResponse;
 pub use antigravity_hook::{
     AntigravityHookConfig, AntigravityHookDecision, AntigravityHookInput, AntigravityHookOutput,
     AntigravityHookToolCall,

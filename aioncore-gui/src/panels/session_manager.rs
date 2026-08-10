@@ -1,6 +1,6 @@
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render, Styled, Window,
-    prelude::FluentBuilder, px,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render,
+    Styled, Window, prelude::FluentBuilder, px,
 };
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{
@@ -11,7 +11,9 @@ use gpui_component::{
 
 use crate::{
     AppState, PanelAction,
-    core::aioncore::{AssistantResponse, ConversationEventAction, ConversationState, ConversationStore},
+    core::aioncore::{
+        AionrsSessionResponse, AssistantResponse, ConversationEventAction, ConversationState, ConversationStore,
+    },
     panels::dock_panel::DockPanel,
     utils,
 };
@@ -21,6 +23,8 @@ pub struct SessionManagerPanel {
     state: ConversationState,
     available_assistants: Vec<AssistantResponse>,
     loading_assistants: bool,
+    aionrs_sessions: Vec<AionrsSessionResponse>,
+    loading_aionrs_sessions: bool,
 }
 
 impl DockPanel for SessionManagerPanel {
@@ -52,9 +56,12 @@ impl SessionManagerPanel {
             state: ConversationState::default(),
             available_assistants: Vec::new(),
             loading_assistants: false,
+            aionrs_sessions: Vec::new(),
+            loading_aionrs_sessions: false,
         };
         panel.refresh(cx);
         panel.refresh_assistants(cx);
+        panel.refresh_aionrs_sessions(cx);
         panel.subscribe_events(cx);
         panel
     }
@@ -100,6 +107,30 @@ impl SessionManagerPanel {
                                     assistants.into_iter().filter(|assistant| assistant.enabled).collect();
                             }
                             Err(_) => this.state.error = Some("Unable to load assistants".to_owned()),
+                        }
+                        cx.notify();
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn refresh_aionrs_sessions(&mut self, cx: &mut Context<Self>) {
+        let Some(settings_store) = AppState::global(cx).settings_store().cloned() else {
+            return;
+        };
+        self.loading_aionrs_sessions = true;
+        let entity = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            let result = settings_store.list_aionrs_sessions().await;
+            let _ = cx.update(|cx| {
+                if let Some(entity) = entity.upgrade() {
+                    entity.update(cx, |this, cx| {
+                        this.loading_aionrs_sessions = false;
+                        match result {
+                            Ok(sessions) => this.aionrs_sessions = sessions,
+                            Err(_) => this.state.error = Some("Unable to load persisted aionrs sessions".to_owned()),
                         }
                         cx.notify();
                     });
@@ -242,6 +273,13 @@ impl Render for SessionManagerPanel {
                         h_flex()
                             .gap_1()
                             .child(
+                                Button::new("refresh-aionrs-sessions")
+                                    .icon(Icon::new(IconName::LoaderCircle))
+                                    .ghost()
+                                    .small()
+                                    .on_click(cx.listener(|this, _, _, cx| this.refresh_aionrs_sessions(cx))),
+                            )
+                            .child(
                                 Button::new("refresh-assistants")
                                     .icon(Icon::new(IconName::LoaderCircle))
                                     .ghost()
@@ -292,6 +330,54 @@ impl Render for SessionManagerPanel {
             .child(
                 gpui::div().flex_1().min_h_0().overflow_y_scrollbar().child(
                     v_flex()
+                        .gap_2()
+                        .when(self.loading_aionrs_sessions, |this| {
+                            this.child(
+                                gpui::div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Loading saved aionrs sessions…"),
+                            )
+                        })
+                        .when(!self.aionrs_sessions.is_empty(), |this| {
+                            this.child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        gpui::div()
+                                            .text_sm()
+                                            .font_weight(gpui::FontWeight::BOLD)
+                                            .child("Saved aionrs Sessions"),
+                                    )
+                                    .children(self.aionrs_sessions.iter().enumerate().map(|(index, session)| {
+                                        gpui::div()
+                                            .id(("aionrs-session", index))
+                                            .w_full()
+                                            .p_2()
+                                            .rounded(px(6.))
+                                            .bg(theme.secondary)
+                                            .child(gpui::div().text_sm().child(session.summary.clone()))
+                                            .child(gpui::div().text_xs().text_color(theme.muted_foreground).child(
+                                                format!(
+                                                    "{} · {} messages · {}",
+                                                    session.model, session.message_count, session.updated_at
+                                                ),
+                                            ))
+                                            .child(
+                                                gpui::div()
+                                                    .text_xs()
+                                                    .text_color(theme.muted_foreground)
+                                                    .child(session.id.clone()),
+                                            )
+                                    })),
+                            )
+                        })
+                        .child(
+                            gpui::div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::BOLD)
+                                .child("AionCore Conversations"),
+                        )
                         .gap_1()
                         .children(
                             self.state

@@ -13,9 +13,9 @@ use axum::extract::{Extension, Json, Path, State};
 use axum::routing::{get, patch, post, put};
 
 use aionui_api_types::{
-    AgentLogoEntry, AgentManagementRow, AgentMetadata, AgentOverridesResponse, ApiResponse, CustomAgentUpsertRequest,
-    DeleteCustomAgentResponse, ProviderHealthCheckRequest, ProviderHealthCheckResponse, SetAgentOverridesRequest,
-    SetEnabledRequest, TryConnectCustomAgentRequest, TryConnectCustomAgentResponse,
+    AgentLogoEntry, AgentManagementRow, AgentMetadata, AgentOverridesResponse, AionrsSessionResponse, ApiResponse,
+    CustomAgentUpsertRequest, DeleteCustomAgentResponse, ProviderHealthCheckRequest, ProviderHealthCheckResponse,
+    SetAgentOverridesRequest, SetEnabledRequest, TryConnectCustomAgentRequest, TryConnectCustomAgentResponse,
 };
 use aionui_auth::CurrentUser;
 use aionui_common::ApiError;
@@ -26,6 +26,7 @@ use crate::routes::state::AgentRouterState;
 pub fn agent_routes(state: AgentRouterState) -> Router {
     Router::new()
         .route("/api/agents/logos", get(list_agent_logos))
+        .route("/api/aionrs/sessions", get(list_aionrs_sessions))
         .route("/api/agents/management", get(list_management_agents))
         .route("/api/agents/{id}/health-check", post(health_check_by_id))
         .route("/api/agents/provider-health-check", post(provider_health_check))
@@ -51,6 +52,27 @@ async fn list_agent_logos(
             .await
             .map_err(agent_error_to_api_error)?,
     )))
+}
+
+async fn list_aionrs_sessions(
+    State(state): State<AgentRouterState>,
+    Extension(_user): Extension<CurrentUser>,
+) -> Result<Json<ApiResponse<Vec<AionrsSessionResponse>>>, ApiError> {
+    let session_manager = aion_agent::session::SessionManager::new(state.data_dir.join("aionrs-sessions"), 100);
+    let sessions = session_manager
+        .list()
+        .map_err(|error| ApiError::Internal(format!("Unable to list persisted aionrs sessions: {error}")))?
+        .into_iter()
+        .map(|session| AionrsSessionResponse {
+            id: session.id,
+            created_at: session.created_at.to_rfc3339(),
+            updated_at: session.updated_at.to_rfc3339(),
+            model: session.model,
+            summary: session.summary,
+            message_count: session.message_count,
+        })
+        .collect();
+    Ok(Json(ApiResponse::ok(sessions)))
 }
 
 async fn list_management_agents(

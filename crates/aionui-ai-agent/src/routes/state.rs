@@ -12,4 +12,5 @@ pub struct RemoteAgentRouterState {
 pub struct AgentRouterState {
     pub agent_registry: Arc<AgentRegistry>,
     pub service: Arc<AgentService>,
+    pub data_dir: std::path::PathBuf,
 }
