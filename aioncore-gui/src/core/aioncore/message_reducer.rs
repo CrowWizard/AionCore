@@ -122,7 +122,15 @@ impl MessageStreamReducer {
         };
         if !matches!(
             kind.as_str(),
-            "text" | "content" | "thinking" | "tool_call" | "error" | "finish"
+            "text"
+                | "content"
+                | "thinking"
+                | "tool_call"
+                | "acp_tool_call"
+                | "tool_group"
+                | "tips"
+                | "error"
+                | "finish"
         ) {
             log::debug!("Ignoring unsupported AionCore stream event: type={kind}");
             return false;
@@ -190,15 +198,38 @@ fn merge_content(old: Value, new: Value) -> Value {
     let old_text = content_text(&old).map(str::to_owned);
     let new_text = content_text(&new).map(str::to_owned);
     let (Some(old_text), Some(new_text)) = (old_text, new_text) else {
-        return new;
+        return merge_json_value(old, new);
     };
+    let merged = merge_json_value(old, new);
     if new_text.starts_with(&old_text) {
-        return with_content(new, new_text);
+        return with_content(merged, new_text);
     }
     if old_text.starts_with(&new_text) {
-        return old;
+        return with_content(merged, old_text);
     }
-    with_content(old, format!("{old_text}{new_text}"))
+    with_content(merged, format!("{old_text}{new_text}"))
+}
+
+fn merge_json_value(mut old: Value, new: Value) -> Value {
+    let new_object = match new {
+        Value::Object(object) => object,
+        replacement => return replacement,
+    };
+    let Value::Object(old_object) = &mut old else {
+        return Value::Object(new_object);
+    };
+    for (key, value) in new_object {
+        if value.is_null() {
+            continue;
+        }
+        match old_object.get_mut(&key) {
+            Some(existing) => *existing = merge_json_value(existing.clone(), value),
+            None => {
+                old_object.insert(key, value);
+            }
+        }
+    }
+    old
 }
 
 fn content_text(value: &Value) -> Option<&str> {
@@ -253,5 +284,71 @@ mod tests {
             "conversation_id": "conversation-1", "msg_id": "message-1", "turn_id": "turn-1", "type": "ask"
         })));
         assert!(reducer.snapshot().messages.is_empty());
+    }
+
+    #[test]
+    fn preserves_tool_fields_across_incremental_updates() {
+        let mut reducer = MessageStreamReducer::default();
+        assert!(reducer.apply_stream(&json!({
+            "conversation_id": "conversation-1",
+            "msg_id": "tool-1",
+            "turn_id": "turn-1",
+            "type": "tool_call",
+            "data": {
+                "call_id": "tool-1",
+                "name": "Bash",
+                "status": "running",
+                "input": { "command": "cargo test" }
+            }
+        })));
+        assert!(reducer.apply_stream(&json!({
+            "conversation_id": "conversation-1",
+            "msg_id": "tool-1",
+            "turn_id": "turn-1",
+            "type": "tool_call",
+            "data": { "status": "completed", "output": "ok" }
+        })));
+        let message = &reducer.snapshot().messages[0];
+        assert_eq!(message.content["name"], "Bash");
+        assert_eq!(message.content["input"]["command"], "cargo test");
+        assert_eq!(message.content["status"], "completed");
+        assert_eq!(message.content["output"], "ok");
+    }
+
+    #[test]
+    fn accepts_verified_engineering_message_types() {
+        for kind in ["acp_tool_call", "tool_group", "tips"] {
+            let mut reducer = MessageStreamReducer::default();
+            assert!(reducer.apply_stream(&json!({
+                "conversation_id": "conversation-1",
+                "msg_id": format!("{kind}-1"),
+                "turn_id": "turn-1",
+                "type": kind,
+                "data": {}
+            })));
+            assert_eq!(reducer.snapshot().messages[0].kind, kind);
+        }
+    }
+
+    #[test]
+    fn thinking_done_frame_keeps_text_and_adds_completion_metadata() {
+        let mut reducer = MessageStreamReducer::default();
+        for data in [
+            json!({ "content": "Inspecting code" }),
+            json!({ "content": "", "status": "done", "duration": 1_500 }),
+        ] {
+            assert!(reducer.apply_stream(&json!({
+                "conversation_id": "conversation-1",
+                "msg_id": "thinking-1",
+                "turn_id": "turn-1",
+                "type": "thinking",
+                "data": data
+            })));
+        }
+        let snapshot = reducer.snapshot();
+        let content = &snapshot.messages[0].content;
+        assert_eq!(content["content"], "Inspecting code");
+        assert_eq!(content["status"], "done");
+        assert_eq!(content["duration"], 1_500);
     }
 }

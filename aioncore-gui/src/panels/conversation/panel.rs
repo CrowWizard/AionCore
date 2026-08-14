@@ -19,7 +19,7 @@ use crate::core::aioncore::{
 };
 use crate::utils::clipboard::ClipboardImage;
 use crate::{
-    AppState, ChatInputBox, app::actions::AddCodeSelection, core::services::SessionStatus,
+    AppState, ChatInputBox, app::actions::AddCodeSelection, components::render_message, core::services::SessionStatus,
     panels::dock_panel::DockPanel,
 };
 use chrono::{DateTime, Utc};
@@ -46,6 +46,7 @@ pub struct ConversationPanel {
     /// Clipboard images materialized as controlled temporary PNG files.
     pasted_images: Vec<ClipboardImage>,
     ask_selections: std::collections::HashMap<String, Vec<String>>,
+    expanded_messages: std::collections::HashSet<String>,
     /// List of code selections from editor
     code_selections: Vec<AddCodeSelection>,
     history_messages: Vec<MessageView>,
@@ -165,36 +166,6 @@ fn decline_button(
     )
 }
 
-fn render_history_message(message: &MessageView) -> gpui::AnyElement {
-    let text = match &message.content {
-        serde_json::Value::String(value) => value.clone(),
-        serde_json::Value::Object(value) => value
-            .get("content")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
-            .unwrap_or_else(|| serde_json::to_string(&message.content).unwrap_or_default()),
-        value => serde_json::to_string(value).unwrap_or_default(),
-    };
-    let label = match message.kind.as_str() {
-        "text" | "content" => match message.position.as_deref() {
-            Some("right") => "You",
-            _ => "Assistant",
-        },
-        "thinking" => "Thinking",
-        "tool_call" | "tool_group" => "Tool",
-        "error" => "Error",
-        _ => "Message",
-    };
-    v_flex()
-        .gap_1()
-        .p_2()
-        .rounded(px(6.))
-        .bg(gpui::rgb(0x202020))
-        .child(gpui::div().text_xs().child(label))
-        .child(gpui::div().text_sm().child(text))
-        .into_any_element()
-}
-
 impl ConversationPanel {
     /// Create a new panel with mock data (for demo purposes)
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -259,6 +230,7 @@ impl ConversationPanel {
             input_state,
             pasted_images: Vec::new(),
             ask_selections: std::collections::HashMap::new(),
+            expanded_messages: std::collections::HashSet::new(),
             code_selections: Vec::new(),
             history_messages: Vec::new(),
             confirmations: Vec::new(),
@@ -285,6 +257,22 @@ impl ConversationPanel {
         let offset = self.scroll_handle.offset().y;
         let distance_to_bottom = max_offset + offset;
         distance_to_bottom <= px(AUTO_SCROLL_THRESHOLD_PX)
+    }
+
+    fn render_history_message(&self, message: &MessageView, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let message_id = message.id.clone();
+        let expanded = self.expanded_messages.contains(&message_id);
+        render_message(
+            message,
+            expanded,
+            cx.listener(move |this, _, _, cx| {
+                if !this.expanded_messages.insert(message_id.clone()) {
+                    this.expanded_messages.remove(&message_id);
+                }
+                cx.notify();
+            }),
+            cx,
+        )
     }
 
     pub fn load_history_for_session(entity: &Entity<Self>, conversation_id: String, cx: &mut App) {
@@ -821,7 +809,7 @@ impl Render for ConversationPanel {
                 self.history_messages
                     .iter()
                     .filter(|message| !message.hidden)
-                    .map(render_history_message),
+                    .map(|message| self.render_history_message(message, cx)),
             )
             .when_some(self.prompt_capability, |this, capability| {
                 this.when(!capability.0 && !capability.1, |this| {
