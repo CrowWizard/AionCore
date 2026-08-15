@@ -10,7 +10,7 @@ const MENU_SHOW_ID: &str = "show_window";
 const MENU_QUIT_ID: &str = "quit_app";
 
 // 定义唯一的托盘图标 ID，避免与其他应用冲突
-const TRAY_ICON_ID: &str = "plus.agentx.app.tray";
+const TRAY_ICON_ID: &str = "org.aioncore.gui.tray";
 
 /// 在 Linux 平台上初始化 GTK
 /// 必须在创建托盘图标之前调用
@@ -63,7 +63,7 @@ impl SystemTray {
             .with_id(TrayIconId::new(TRAY_ICON_ID))
             .with_menu(Box::new(tray_menu))
             .with_menu_on_left_click(false) // 禁用左键显示菜单
-            .with_tooltip("AgentX Studio")
+            .with_tooltip("AionCore")
             .with_icon(icon)
             .build()
             .context("Failed to build tray icon")?;

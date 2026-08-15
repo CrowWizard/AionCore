@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use autocorrect::ignorer::Ignorer;
 use gpui_component::tree::TreeItem;
 use lsp_types::{CompletionItem, CompletionTextEdit, InsertReplaceEdit};
 
@@ -46,18 +45,12 @@ pub fn completion_item(
     }
 }
 
-pub fn build_file_items(ignorer: &Ignorer, root: &PathBuf, path: &PathBuf) -> Vec<TreeItem> {
+pub fn build_file_items(path: &PathBuf) -> Vec<TreeItem> {
     let mut items = Vec::new();
 
     if let Ok(entries) = std::fs::read_dir(path) {
         for entry in entries.flatten() {
             let path = entry.path();
-            let relative_path = path.strip_prefix(root).unwrap_or(&path);
-            if ignorer.is_ignored(&relative_path.to_string_lossy())
-                || relative_path.ends_with(".git")
-            {
-                continue;
-            }
             let file_name = path
                 .file_name()
                 .and_then(|n| n.to_str())
@@ -65,17 +58,13 @@ pub fn build_file_items(ignorer: &Ignorer, root: &PathBuf, path: &PathBuf) -> Ve
                 .to_string();
             let id = path.to_string_lossy().to_string();
             if path.is_dir() {
-                let children = build_file_items(ignorer, &root, &path);
+                let children = build_file_items(&path);
                 items.push(TreeItem::new(id, file_name).children(children));
             } else {
                 items.push(TreeItem::new(id, file_name));
             }
         }
     }
-    items.sort_by(|a, b| {
-        b.is_folder()
-            .cmp(&a.is_folder())
-            .then(a.label.cmp(&b.label))
-    });
+    items.sort_by(|a, b| b.is_folder().cmp(&a.is_folder()).then(a.label.cmp(&b.label)));
     items
 }

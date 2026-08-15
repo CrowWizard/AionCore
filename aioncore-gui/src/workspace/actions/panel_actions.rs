@@ -349,8 +349,11 @@ impl DockWorkspace {
                 PanelKind::Terminal { working_directory } => {
                     self.add_terminal_panel_to(working_directory.clone(), *placement, window, cx);
                 }
-                PanelKind::CodeEditor { .. } | PanelKind::Welcome { .. } => {
-                    log::warn!("This legacy Agent Studio panel is unavailable in AionCore GUI");
+                PanelKind::CodeEditor { working_directory } => {
+                    self.add_code_editor_panel_to(working_directory.clone(), *placement, window, cx);
+                }
+                PanelKind::Welcome { .. } => {
+                    log::warn!("Welcome panel is unavailable in AionCore GUI");
                 }
                 PanelKind::ToolCallDetail { .. } => {
                     log::warn!("ACP tool-call detail is unavailable until an AionCore-native view is implemented");
@@ -363,8 +366,11 @@ impl DockWorkspace {
                 PanelKind::Terminal { working_directory } => {
                     self.add_terminal_panel_to(working_directory.clone(), DockPlacement::Bottom, window, cx);
                 }
-                PanelKind::CodeEditor { .. } | PanelKind::Welcome { .. } => {
-                    log::warn!("This legacy Agent Studio panel is unavailable in AionCore GUI");
+                PanelKind::CodeEditor { working_directory } => {
+                    self.add_code_editor_panel_to(working_directory.clone(), DockPlacement::Center, window, cx);
+                }
+                PanelKind::Welcome { .. } => {
+                    log::warn!("Welcome panel is unavailable in AionCore GUI");
                 }
                 PanelKind::ToolCallDetail { .. } => {
                     log::warn!("ACP tool-call detail is unavailable until an AionCore-native view is implemented");
@@ -432,6 +438,23 @@ impl DockWorkspace {
             if !was_dock_open {
                 dock_area.toggle_dock(placement, window, cx);
                 log::debug!("Auto-expanded {:?} dock for terminal panel", placement);
+            }
+        });
+    }
+
+    fn add_code_editor_panel_to(
+        &mut self,
+        working_directory: Option<std::path::PathBuf>,
+        placement: DockPlacement,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let panel = Arc::new(DockPanelContainer::panel_for_code_editor(working_directory, window, cx));
+        self.dock_area.update(cx, |dock_area, cx| {
+            let was_dock_open = dock_area.is_dock_open(placement, cx);
+            dock_area.add_panel(panel, placement, None, window, cx);
+            if !was_dock_open {
+                dock_area.toggle_dock(placement, window, cx);
             }
         });
     }

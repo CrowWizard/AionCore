@@ -1,6 +1,8 @@
 mod agent_select;
 mod chat_input_box;
 mod command_suggestions_popover;
+mod diff_summary;
+mod diff_view;
 mod file_picker;
 mod input_suggestion;
 mod message_view;
@@ -13,6 +15,8 @@ pub use chat_input_box::ChatInputBox;
 
 pub use input_suggestion::{InputSuggestion, InputSuggestionItem, InputSuggestionState};
 
+pub use diff_summary::DiffSummary;
+pub use diff_view::{DiffSpec, DiffView};
 pub use message_view::render_message;
 
 pub use file_picker::{FileItem, FilePickerDelegate};

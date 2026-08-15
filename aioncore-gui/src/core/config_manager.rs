@@ -1,27 +1,25 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-/// Get the user data directory for AgentX
-/// - macOS: ~/.agentx/
-/// - Windows: %APPDATA%\agentx\
-/// - Linux: ~/.config/agentx/
+/// 获取 AionCore GUI 的用户数据目录。
+/// 配置、主题、布局和本地 UI 状态全部归属于 AionCore GUI。
 pub fn get_user_data_dir() -> Result<PathBuf> {
     #[cfg(target_os = "macos")]
     {
         let home = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?;
-        Ok(home.join(".agentx"))
+        Ok(home.join(".config").join("aiongui"))
     }
 
     #[cfg(target_os = "windows")]
     {
         let appdata = dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get AppData directory"))?;
-        Ok(appdata.join("agentx"))
+        Ok(appdata.join("aiongui"))
     }
 
     #[cfg(target_os = "linux")]
     {
         let config = dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Failed to get config directory"))?;
-        Ok(config.join("agentx"))
+        Ok(config.join("aiongui"))
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
@@ -41,7 +39,7 @@ pub fn ensure_user_data_dir() -> Result<PathBuf> {
 }
 
 fn fallback_data_dir() -> PathBuf {
-    let dir = std::env::temp_dir().join("agentx");
+    let dir = std::env::temp_dir().join("aiongui");
     if let Err(e) = std::fs::create_dir_all(&dir) {
         log::warn!("Failed to create fallback data directory {:?}: {}", dir, e);
     }
@@ -176,4 +174,14 @@ pub fn get_docks_layout_path() -> PathBuf {
 /// Always uses user data directory: <user_data_dir>/sessions
 pub fn get_sessions_dir() -> PathBuf {
     user_data_dir_or_temp().join("sessions")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fallback_data_dir;
+
+    #[test]
+    fn fallback_directory_uses_aiongui_namespace() {
+        assert!(fallback_data_dir().ends_with("aiongui"));
+    }
 }

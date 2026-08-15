@@ -13,7 +13,7 @@ pub struct UpdateDownloader {
 impl UpdateDownloader {
     /// Create a new downloader with default download directory
     pub fn new() -> Result<Self> {
-        let download_dir = std::env::temp_dir().join("agentx_updates");
+        let download_dir = std::env::temp_dir().join("aiongui-updates");
         std::fs::create_dir_all(&download_dir)?;
 
         Ok(Self { download_dir })

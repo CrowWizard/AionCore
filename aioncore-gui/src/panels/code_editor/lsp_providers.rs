@@ -5,14 +5,12 @@ use gpui::{App, AppContext, Context, Entity, Result, SharedString, Task, Window}
 use gpui_component::{
     WindowExt,
     input::{
-        CodeActionProvider, CompletionProvider, DefinitionProvider, DocumentColorProvider,
-        HoverProvider, InputState, Rope, RopeExt,
+        CodeActionProvider, CompletionProvider, DefinitionProvider, DocumentColorProvider, HoverProvider, InputState,
+        Rope, RopeExt,
     },
     notification::Notification,
 };
-use lsp_types::{
-    CodeAction, CodeActionKind, CompletionContext, CompletionResponse, TextEdit, WorkspaceEdit,
-};
+use lsp_types::{CodeAction, CodeActionKind, CompletionContext, CompletionResponse, TextEdit, WorkspaceEdit};
 
 use crate::AppState;
 
@@ -82,12 +80,7 @@ impl CompletionProvider for CodeEditorPanelLspStore {
         })
     }
 
-    fn is_completion_trigger(
-        &self,
-        _offset: usize,
-        _new_text: &str,
-        _cx: &mut Context<InputState>,
-    ) -> bool {
+    fn is_completion_trigger(&self, _offset: usize, _new_text: &str, _cx: &mut Context<InputState>) -> bool {
         true
     }
 }
@@ -214,14 +207,8 @@ impl DefinitionProvider for CodeEditorPanelLspStore {
 
         if word == "Duration" {
             let target_range = lsp_types::Range {
-                start: lsp_types::Position {
-                    line: 2,
-                    character: 4,
-                },
-                end: lsp_types::Position {
-                    line: 2,
-                    character: 23,
-                },
+                start: lsp_types::Position { line: 2, character: 4 },
+                end: lsp_types::Position { line: 2, character: 23 },
             };
             return Task::ready(Ok(vec![lsp_types::LocationLink {
                 target_uri: document_uri,
@@ -231,19 +218,13 @@ impl DefinitionProvider for CodeEditorPanelLspStore {
             }]));
         }
 
-        let names = RUST_DOC_URLS
-            .iter()
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>();
+        let names = RUST_DOC_URLS.iter().map(|(name, _)| *name).collect::<Vec<_>>();
         for (ix, t) in names.iter().enumerate() {
             if *t == word {
                 let url = RUST_DOC_URLS[ix].1;
                 let location = lsp_types::LocationLink {
-                    target_uri: lsp_types::Uri::from_str(&format!(
-                        "https://doc.rust-lang.org/std/{}.html",
-                        url
-                    ))
-                    .unwrap(),
+                    target_uri: lsp_types::Uri::from_str(&format!("https://doc.rust-lang.org/std/{}.html", url))
+                        .unwrap(),
                     target_selection_range: lsp_types::Range::default(),
                     target_range: lsp_types::Range::default(),
                     origin_selection_range: Some(symbol_range),
@@ -312,7 +293,7 @@ impl CodeActionProvider for TextConvertor {
         _window: &mut Window,
         cx: &mut App,
     ) -> Task<Result<Vec<CodeAction>>> {
-        let mut actions = vec![];
+        let actions = vec![];
         if range.is_empty() {
             return Task::ready(Ok(actions));
         }
@@ -461,7 +442,8 @@ impl CodeActionProvider for TextConvertor {
         //     ..Default::default()
         // });
 
-        // AI-Powered Actions (only show if AI service is configured)
+        // AI-Powered Actions require an AionCore-native editor service.
+        #[cfg(any())]
         if let Some(_ai_service) = AppState::global(cx).ai_service() {
             actions.push(CodeAction {
                 title: "Add Documentation Comment (AI)".into(),
@@ -518,6 +500,7 @@ impl CodeActionProvider for TextConvertor {
         cx: &mut App,
     ) -> Task<Result<()>> {
         // Check for AI actions first
+        #[cfg(any())]
         if let Some(data) = &action.data {
             if let Ok(json) = serde_json::from_value::<serde_json::Value>(data.clone()) {
                 if json.get("ai_action").and_then(|v| v.as_str()).is_some() {
@@ -551,6 +534,7 @@ impl CodeActionProvider for TextConvertor {
 }
 
 impl TextConvertor {
+    #[cfg(any())]
     fn perform_ai_action(
         &self,
         state: Entity<InputState>,
@@ -564,23 +548,14 @@ impl TextConvertor {
             // Show error notification if AI service is not configured
             struct AiServiceError;
             let note =
-                Notification::error("AI service not configured. Please check your config.json")
-                    .id::<AiServiceError>();
+                Notification::error("AI service not configured. Please check your config.json").id::<AiServiceError>();
             window.push_notification(note, cx);
             return Task::ready(Err(anyhow!("AI service not configured")));
         };
 
-        let ai_action = data
-            .get("ai_action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let ai_action = data.get("ai_action").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-        let code = data
-            .get("code")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        let code = data.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
         let ai_service = ai_service.clone();
         let state_weak = state.downgrade();
@@ -590,9 +565,7 @@ impl TextConvertor {
                 let range: lsp_types::Range = match data.get("range") {
                     Some(r) => serde_json::from_value(r.clone()).unwrap(),
                     None => {
-                        return Task::ready(Err(anyhow!(
-                            "Missing range data for AI comment action"
-                        )));
+                        return Task::ready(Err(anyhow!("Missing range data for AI comment action")));
                     }
                 };
 
@@ -604,8 +577,7 @@ impl TextConvertor {
 
                 // Show loading notification
                 struct AiCommentLoading;
-                let loading_note =
-                    Notification::info("Generating comment with AI...").id::<AiCommentLoading>();
+                let loading_note = Notification::info("Generating comment with AI...").id::<AiCommentLoading>();
                 window.push_notification(loading_note, cx);
 
                 window.spawn(cx, async move |cx| {
@@ -630,8 +602,7 @@ impl TextConvertor {
                                 // Show success notification
                                 struct AiCommentSuccess;
                                 let success_note =
-                                    Notification::success("Comment generated successfully!")
-                                        .id::<AiCommentSuccess>();
+                                    Notification::success("Comment generated successfully!").id::<AiCommentSuccess>();
                                 window.push_notification(success_note, cx);
                             })?;
 
@@ -650,11 +621,9 @@ impl TextConvertor {
                                     log::debug!("Found active window");
                                     window.update(cx, |_, window, cx| {
                                         log::debug!("Inside window.update, pushing notification");
-                                        let error_note = Notification::error(format!(
-                                            "Failed to generate comment: {}",
-                                            e
-                                        ))
-                                        .id::<AiCommentError>();
+                                        let error_note =
+                                            Notification::error(format!("Failed to generate comment: {}", e))
+                                                .id::<AiCommentError>();
                                         window.push_notification(error_note, cx);
                                         log::debug!("Notification pushed successfully");
                                     })
@@ -677,8 +646,7 @@ impl TextConvertor {
             "explain" => {
                 // Show loading notification
                 struct AiExplainLoading;
-                let loading_note =
-                    Notification::info("Analyzing code with AI...").id::<AiExplainLoading>();
+                let loading_note = Notification::info("Analyzing code with AI...").id::<AiExplainLoading>();
                 window.push_notification(loading_note, cx);
 
                 window.spawn(cx, async move |cx| {
@@ -687,22 +655,24 @@ impl TextConvertor {
 
                     match explanation_result {
                         Ok(explanation) => {
-                            log::info!(
-                                "=== Code Explanation ===\n{}\n========================",
-                                explanation
-                            );
+                            log::info!("=== Code Explanation ===\n{}\n========================", explanation);
 
                             // Show explanation in notification
                             cx.update(|_, cx| {
                                 if let Some(window) = cx.active_window() {
-                                    window.update(cx, |_, window, cx| {
-                                        struct AiExplainResult;
-                                        let success_note = Notification::success("Code explanation generated! Check logs for details.")
+                                    window
+                                        .update(cx, |_, window, cx| {
+                                            struct AiExplainResult;
+                                            let success_note = Notification::success(
+                                                "Code explanation generated! Check logs for details.",
+                                            )
                                             .id::<AiExplainResult>();
-                                        window.push_notification(success_note, cx);
-                                    }).ok();
+                                            window.push_notification(success_note, cx);
+                                        })
+                                        .ok();
                                 }
-                            }).ok();
+                            })
+                            .ok();
 
                             Ok(())
                         }
@@ -743,8 +713,8 @@ impl TextConvertor {
             "improve" => {
                 // Show loading notification
                 struct AiImproveLoading;
-                let loading_note = Notification::info("Analyzing code for improvements with AI...")
-                    .id::<AiImproveLoading>();
+                let loading_note =
+                    Notification::info("Analyzing code for improvements with AI...").id::<AiImproveLoading>();
                 window.push_notification(loading_note, cx);
 
                 window.spawn(cx, async move |cx| {
@@ -761,14 +731,19 @@ impl TextConvertor {
                             // Show success in notification
                             cx.update(|_, cx| {
                                 if let Some(window) = cx.active_window() {
-                                    window.update(cx, |_, window, cx| {
-                                        struct AiImproveResult;
-                                        let success_note = Notification::success("Code improvement suggestions generated! Check logs for details.")
+                                    window
+                                        .update(cx, |_, window, cx| {
+                                            struct AiImproveResult;
+                                            let success_note = Notification::success(
+                                                "Code improvement suggestions generated! Check logs for details.",
+                                            )
                                             .id::<AiImproveResult>();
-                                        window.push_notification(success_note, cx);
-                                    }).ok();
+                                            window.push_notification(success_note, cx);
+                                        })
+                                        .ok();
                                 }
-                            }).ok();
+                            })
+                            .ok();
 
                             Ok(())
                         }
@@ -785,8 +760,9 @@ impl TextConvertor {
                                     log::debug!("Found active window for improve error");
                                     window.update(cx, |_, window, cx| {
                                         log::debug!("Inside window.update, pushing improve error notification");
-                                        let error_note = Notification::error(format!("Failed to generate suggestions: {}", e))
-                                            .id::<AiImproveError>();
+                                        let error_note =
+                                            Notification::error(format!("Failed to generate suggestions: {}", e))
+                                                .id::<AiImproveError>();
                                         window.push_notification(error_note, cx);
                                         log::debug!("Improve error notification pushed successfully");
                                     })
@@ -812,11 +788,8 @@ impl TextConvertor {
 }
 
 /// Smart comment formatting based on code type and language
-fn format_comment_for_code(
-    code: &str,
-    comment: &str,
-    style: crate::core::services::CommentStyle,
-) -> String {
+#[cfg(any())]
+fn format_comment_for_code(code: &str, comment: &str, style: crate::core::services::CommentStyle) -> String {
     use crate::core::services::CommentStyle;
 
     let trimmed = code.trim();

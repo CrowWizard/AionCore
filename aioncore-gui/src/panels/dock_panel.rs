@@ -14,8 +14,10 @@ use rust_i18n::t;
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
-use crate::panels::{ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel};
-use crate::{ShowPanelInfo, ToggleSearch};
+use crate::panels::{
+    ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel, code_editor::CodeEditorPanel,
+};
+use crate::{PanelAction, ShowPanelInfo, ToggleSearch};
 
 #[derive(IntoElement)]
 pub struct DockPanelSection {
@@ -322,10 +324,38 @@ impl DockPanelContainer {
         terminal.update(cx, |terminal, cx| terminal.switch_workspace(path, window, cx));
     }
 
+    pub fn panel_for_code_editor(
+        working_directory: Option<std::path::PathBuf>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<Self> {
+        let name = CodeEditorPanel::title();
+        let title_key = CodeEditorPanel::title_key();
+        let description = CodeEditorPanel::description();
+        let working_directory = working_directory.or_else(|| Some(AppState::global(cx).current_working_dir().clone()));
+        let editor = CodeEditorPanel::view_with_working_dir(window, working_directory, cx);
+        let view = cx.new(|cx| {
+            let mut container = Self::new(cx)
+                .agent_studio(editor.into(), CodeEditorPanel::klass())
+                .on_active(CodeEditorPanel::on_active_any);
+            container.focus_handle = cx.focus_handle();
+            container.closable = CodeEditorPanel::closable();
+            container.zoomable = CodeEditorPanel::zoomable();
+            container.name = name.into();
+            container.title_key = title_key.map(SharedString::from);
+            container.description = description.into();
+            container.title_bg = CodeEditorPanel::title_bg();
+            container.paddings = CodeEditorPanel::paddings();
+            container
+        });
+        view
+    }
+
     pub fn panel_from_state(agent_state: &DockPanelState, window: &mut Window, cx: &mut App) -> Entity<Self> {
         match agent_state.agent_studio_klass.as_ref() {
             "SessionManagerPanel" => Self::panel::<SessionManagerPanel>(window, cx),
             "ProjectPanel" => Self::panel::<ProjectPanel>(window, cx),
+            "CodeEditorPanel" => Self::panel::<CodeEditorPanel>(window, cx),
             "TeamPanel" => Self::panel::<TeamPanel>(window, cx),
             "ConversationPanel" => {
                 if let Some(session_id) = agent_state.session_id.as_deref().filter(|id| !id.is_empty()) {
@@ -434,8 +464,15 @@ impl Panel for DockPanelContainer {
     fn title(
         &mut self,
         _window: &mut gpui::Window,
-        _cx: &mut gpui::Context<'_, DockPanelContainer>,
+        cx: &mut gpui::Context<'_, DockPanelContainer>,
     ) -> impl gpui::IntoElement {
+        if self.agent_studio_klass.as_deref() == Some("ConversationPanel") {
+            if let Some(agent_studio) = &self.agent_studio {
+                if let Ok(panel) = agent_studio.clone().downcast::<ConversationPanel>() {
+                    return panel.read(cx).tab_title().into_any_element();
+                }
+            }
+        }
         let title = if let Some(key) = &self.title_key {
             SharedString::from(t!(key.as_ref()).to_string())
         } else {
@@ -494,18 +531,23 @@ impl Panel for DockPanelContainer {
         _window: &mut Window,
         _cx: &mut gpui::Context<'_, DockPanelContainer>,
     ) -> Option<Vec<Button>> {
-        Some(vec![
-            // Button::new("info")
-            //     .icon(IconName::Info)
-            //     .on_click(|_, window, cx| {
-            //         window.push_notification("You have clicked info button", cx);
-            //     }),
-            // Button::new("search")
-            //     .icon(IconName::Search)
-            //     .on_click(|_, window, cx| {
-            //         window.push_notification("You have clicked search button", cx);
-            //     }),
-        ])
+        let mut buttons = vec![];
+        if self.agent_studio_klass.as_deref() == Some("ConversationPanel") {
+            buttons.push(
+                Button::new("new-conversation-tab")
+                    .icon(IconName::Plus)
+                    .tooltip("New conversation")
+                    .on_click(|_, window, cx| {
+                        window.dispatch_action(
+                            Box::new(PanelAction::add_conversation(
+                                gpui_component::dock::DockPlacement::Center,
+                            )),
+                            cx,
+                        );
+                    }),
+            );
+        }
+        Some(buttons)
     }
 
     fn dump(&self, cx: &App) -> PanelState {

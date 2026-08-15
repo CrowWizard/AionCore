@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
+    ActiveTheme, Disableable, Icon, IconName, Selectable, Sizable, StyledExt,
     button::{Button, ButtonVariants},
     h_flex,
     input::InputState,
@@ -15,7 +15,7 @@ use gpui_component::{
 
 // Use the published ACP schema crate
 use crate::core::aioncore::{
-    AskAnswerRequest, AskQuestionAnswer, Confirmation, ConversationRuntimeSummary, MessageView,
+    AskAnswerRequest, AskQuestionAnswer, AssistantResponse, Confirmation, ConversationRuntimeSummary, MessageView,
 };
 use crate::utils::clipboard::ClipboardImage;
 use crate::{
@@ -60,6 +60,11 @@ pub struct ConversationPanel {
     workspace_name: Option<String>,
     working_directory: Option<String>,
     agent_icon: Option<IconName>,
+    agent_name: Option<String>,
+    conversation_title: Option<String>,
+    draft_assistants: Vec<AssistantResponse>,
+    draft_assistant_id: Option<String>,
+    draft_workspace: Option<std::path::PathBuf>,
 }
 
 const AUTO_SCROLL_THRESHOLD_PX: f32 = 120.0;
@@ -75,6 +80,17 @@ fn selected_agent_icon(state: &crate::core::aioncore::ConversationState) -> Opti
             value if value.contains("aion") => IconName::Bot,
             _ => IconName::Bot,
         })
+}
+
+fn normalized_tab_title(value: &str) -> String {
+    let title = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut chars = title.chars();
+    let shortened = chars.by_ref().take(32).collect::<String>();
+    if chars.next().is_some() {
+        format!("{shortened}...")
+    } else {
+        shortened
+    }
 }
 
 #[derive(Clone)]
@@ -208,6 +224,12 @@ impl ConversationPanel {
         self.session_id.clone()
     }
 
+    pub fn tab_title(&self) -> String {
+        self.conversation_title
+            .clone()
+            .unwrap_or_else(|| "New conversation".to_owned())
+    }
+
     /// Get the workspace_id (if available)
     pub fn workspace_id(&self) -> Option<String> {
         self.workspace_id.clone()
@@ -237,6 +259,18 @@ impl ConversationPanel {
         let focus_handle = cx.focus_handle();
         let scroll_handle = ScrollHandle::new();
         let input_state = Self::create_input_state(window, cx);
+        let draft_assistants = AppState::global(cx)
+            .settings_store()
+            .map(|store| {
+                store
+                    .snapshot()
+                    .assistants
+                    .into_iter()
+                    .filter(|assistant| assistant.enabled)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let draft_assistant_id = draft_assistants.first().map(|assistant| assistant.id.clone());
         Self {
             focus_handle,
             session_id,
@@ -255,6 +289,11 @@ impl ConversationPanel {
             workspace_name: None,
             working_directory: None,
             agent_icon: None,
+            agent_name: None,
+            conversation_title: None,
+            draft_assistants,
+            draft_assistant_id,
+            draft_workspace: None,
         }
     }
 
@@ -274,7 +313,12 @@ impl ConversationPanel {
         distance_to_bottom <= px(AUTO_SCROLL_THRESHOLD_PX)
     }
 
-    fn render_history_message(&self, message: &MessageView, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_history_message(
+        &self,
+        message: &MessageView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let message_id = message.id.clone();
         let expanded = self.expanded_messages.contains(&message_id);
         render_message(
@@ -286,6 +330,7 @@ impl ConversationPanel {
                 }
                 cx.notify();
             }),
+            window,
             cx,
         )
     }
@@ -313,7 +358,17 @@ impl ConversationPanel {
                             .as_ref()
                             .and_then(|conversation| conversation.prompt_capability.as_ref())
                             .map(|capability| (capability.image, capability.audio));
-                        this.agent_icon = selected_agent_icon(&store.snapshot());
+                        let snapshot = store.snapshot();
+                        this.agent_icon = selected_agent_icon(&snapshot);
+                        this.agent_name = snapshot
+                            .selected_conversation
+                            .as_ref()
+                            .and_then(|conversation| conversation.assistant.as_ref())
+                            .map(|assistant| assistant.name.clone());
+                        this.conversation_title = snapshot
+                            .selected_conversation
+                            .as_ref()
+                            .map(|conversation| normalized_tab_title(&conversation.name));
                         this.active_turn_id = message_state.active_turn_id;
                         this.scroll_handle.scroll_to_bottom();
                         cx.notify();
@@ -350,7 +405,13 @@ impl ConversationPanel {
                         this.confirmations = store.snapshot().confirmations;
                         this.active_turn_id = state.active_turn_id;
                                         this.session_status = Self::runtime_status(state.runtime.as_ref());
-                                        this.agent_icon = selected_agent_icon(&store.snapshot());
+                                        let snapshot = store.snapshot();
+                                        this.agent_icon = selected_agent_icon(&snapshot);
+                                        this.agent_name = snapshot
+                                            .selected_conversation
+                                            .as_ref()
+                                            .and_then(|conversation| conversation.assistant.as_ref())
+                                            .map(|assistant| assistant.name.clone());
                                         this.scroll_handle.scroll_to_bottom();
                                         cx.notify();
                                     }
@@ -458,9 +519,6 @@ impl ConversationPanel {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(conversation_id) = self.session_id.clone() else {
-            return;
-        };
         let Some(store) = AppState::global(cx).conversation_store().cloned() else {
             return;
         };
@@ -470,7 +528,26 @@ impl ConversationPanel {
             .chain(images.iter().map(|image| image.path.clone()))
             .collect();
         let weak_entity = cx.entity().downgrade();
+        let conversation_id = self.session_id.clone();
+        let draft_assistant_id = self.draft_assistant_id.clone();
+        let draft_workspace = self.draft_workspace.clone();
         cx.spawn(async move |_, cx| {
+            let conversation_id = match conversation_id {
+                Some(id) => id,
+                None => {
+                    let (Some(assistant_id), Some(workspace)) = (draft_assistant_id, draft_workspace) else {
+                        log::warn!("Draft conversation requires an agent and workspace before sending");
+                        return;
+                    };
+                    match store.create(None, assistant_id, workspace).await {
+                        Ok(conversation) => conversation.id,
+                        Err(error) => {
+                            log::warn!("AionCore conversation creation failed: {error:?}");
+                            return;
+                        }
+                    }
+                }
+            };
             let result = store.send_message(&conversation_id, text, files).await;
             for image in images {
                 crate::utils::clipboard::remove_file(image.path).await;
@@ -481,11 +558,21 @@ impl ConversationPanel {
                     let _ = cx.update(|cx| {
                         if let Some(entity) = weak_entity.upgrade() {
                             entity.update(cx, |this, cx| {
+                                this.session_id = Some(conversation_id.clone());
                                 this.active_turn_id = Some(response.turn_id);
+                                if let Some(conversation) = store
+                                    .snapshot()
+                                    .conversations
+                                    .iter()
+                                    .find(|conversation| conversation.id == conversation_id)
+                                {
+                                    this.conversation_title = Some(normalized_tab_title(&conversation.name));
+                                }
                                 this.session_status = Self::runtime_status(Some(&response.runtime));
                                 this.history_messages = store.message_snapshot().messages;
                                 cx.notify();
                             });
+                            Self::subscribe_to_stream_events(&entity, conversation_id.clone(), cx);
                         }
                     });
                 }
@@ -493,6 +580,64 @@ impl ConversationPanel {
             }
         })
         .detach();
+    }
+
+    fn choose_draft_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let entity = cx.entity().downgrade();
+        cx.spawn_in(window, async move |_, window| {
+            let Some(workspace) = crate::utils::pick_folder("Select conversation workspace").await else {
+                return;
+            };
+            let _ = window.update(|_, cx| {
+                if let Some(entity) = entity.upgrade() {
+                    entity.update(cx, |this, cx| {
+                        this.draft_workspace = Some(workspace);
+                        cx.notify();
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn render_draft_config(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let selected = self.draft_assistant_id.clone();
+        let workspace = self
+            .draft_workspace
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap_or("Choose folder")
+            .to_owned();
+        h_flex()
+            .w_full()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .py_2()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .child(
+                Button::new("draft-workspace")
+                    .icon(IconName::Folder)
+                    .label(workspace)
+                    .ghost()
+                    .xsmall()
+                    .on_click(cx.listener(|this, _, window, cx| this.choose_draft_workspace(window, cx))),
+            )
+            .children(self.draft_assistants.iter().enumerate().map(|(index, assistant)| {
+                let assistant_id = assistant.id.clone();
+                Button::new(("draft-agent", index))
+                    .label(assistant.name.clone())
+                    .ghost()
+                    .xsmall()
+                    .selected(selected.as_deref() == Some(assistant.id.as_str()))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.draft_assistant_id = Some(assistant_id.clone());
+                        cx.notify();
+                    }))
+            }))
+            .into_any_element()
     }
 
     fn send_cancel_message(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -775,6 +920,17 @@ impl ConversationPanel {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::normalized_tab_title;
+
+    #[test]
+    fn tab_title_is_single_line_and_truncated() {
+        let title = normalized_tab_title("A\nconversation with a very long generated title");
+        assert_eq!(title, "A conversation with a very long ...");
+    }
+}
+
 impl DockPanel for ConversationPanel {
     fn title() -> &'static str {
         "Conversation"
@@ -816,7 +972,7 @@ impl Focusable for ConversationPanel {
 }
 
 impl Render for ConversationPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_empty = self.history_messages.is_empty() && self.confirmations.is_empty();
         let message_list = v_flex()
             .p_4()
@@ -826,7 +982,7 @@ impl Render for ConversationPanel {
                 self.history_messages
                     .iter()
                     .filter(|message| !message.hidden)
-                    .map(|message| self.render_history_message(message, cx)),
+                    .map(|message| self.render_history_message(message, window, cx)),
             )
             .when_some(self.prompt_capability, |this, capability| {
                 this.when(!capability.0 && !capability.1, |this| {
@@ -891,6 +1047,9 @@ impl Render for ConversationPanel {
                     .bg(cx.theme().background) // Solid background
                     // .border_t_1()
                     .p_1()
+                    .when(self.session_id.is_none(), |this| {
+                        this.child(self.render_draft_config(cx))
+                    })
                     // .border_color(cx.theme().border)
                     .child({
                         let entity = cx.entity().clone();
@@ -900,6 +1059,7 @@ impl Render for ConversationPanel {
                             .code_selections(self.code_selections.clone())
                             .session_status(self.session_status.as_ref().map(|info| info.status.clone()))
                             .agent_icon(self.agent_icon.clone().unwrap_or(IconName::Bot))
+                            .when_some(self.agent_name.clone(), |this, name| this.agent_name(name))
                             .disabled(is_disabled)
                             .on_paste(move |window, cx| {
                                 entity.update(cx, |this, cx| {

@@ -1,6 +1,6 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render,
-    Styled, Window, prelude::FluentBuilder, px,
+    StatefulInteractiveElement, Styled, Window, prelude::FluentBuilder, px,
 };
 use gpui_component::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, WindowExt,
@@ -182,45 +182,12 @@ impl SessionManagerPanel {
     }
 
     fn open_new_conversation_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let assistants = self.available_assistants.clone();
-        let Some(default_assistant) = assistants.first().cloned() else {
-            return;
-        };
-        let panel = cx.entity().downgrade();
-        window.open_dialog(cx, move |dialog, _window, _cx| {
-            let assistant_buttons = assistants.iter().enumerate().map(|(index, assistant)| {
-                let assistant = assistant.clone();
-                let panel = panel.clone();
-                Button::new(("new-conversation-agent", index))
-                    .label(assistant.name.clone())
-                    .ghost()
-                    .small()
-                    .on_click(move |_, window, cx| {
-                        if let Some(panel) = panel.upgrade() {
-                            panel.update(cx, |this, cx| {
-                                this.create_conversation(assistant.clone(), window, cx);
-                            });
-                        }
-                    })
-            });
-            dialog
-                .title("New conversation")
-                .child(
-                    v_flex()
-                        .gap_2()
-                        .child(
-                            gpui::div()
-                                .text_sm()
-                                .child("Choose an agent, then select a workspace folder."),
-                        )
-                        .children(assistant_buttons),
-                )
-                .footer(
-                    DialogFooter::new()
-                        .child(DialogClose::new().child(Button::new("cancel").label("Cancel").outline())),
-                )
-        });
-        let _ = default_assistant;
+        window.dispatch_action(
+            Box::new(PanelAction::add_conversation(
+                gpui_component::dock::DockPlacement::Center,
+            )),
+            cx,
+        );
     }
 
     fn delete_conversation(&mut self, conversation_id: String, cx: &mut Context<Self>) {
@@ -330,17 +297,7 @@ impl SessionManagerPanel {
         });
     }
 
-    fn delete_selected_conversation(&mut self, cx: &mut Context<Self>) {
-        let selected_id = self.selected_conversation_id(cx);
-        if let Some(conversation_id) = selected_id {
-            self.delete_conversation(conversation_id, cx);
-        }
-    }
-
-    fn rename_selected_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(conversation_id) = self.selected_conversation_id(cx) else {
-            return;
-        };
+    fn rename_conversation(&mut self, conversation_id: String, window: &mut Window, cx: &mut Context<Self>) {
         let Some(conversation) = self.state.conversations.iter().find(|item| item.id == conversation_id) else {
             return;
         };
@@ -430,26 +387,72 @@ impl SessionManagerPanel {
                     .unwrap_or(IconName::File)
             };
 
+            let conversation_id = conversation_id.map(str::to_owned);
+            let row_group = format!("conversation-row-{}", ix);
+            let row = h_flex()
+                .id(format!("conversation-row-{}", item.id))
+                .group(row_group.clone())
+                .w_full()
+                .items_center()
+                .gap_2()
+                .child(
+                    Icon::new(icon)
+                        .size(px(14.))
+                        .text_color(cx.theme().foreground.opacity(0.85)),
+                )
+                .child(
+                    gpui::div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_ellipsis()
+                        .child(normalize_title(item.label.as_str())),
+                )
+                .when(is_conversation, |this| {
+                    let rename_id = conversation_id.clone().unwrap_or_default();
+                    let delete_id = rename_id.clone();
+                    this.child(
+                        h_flex()
+                            .invisible()
+                            .group_hover(row_group, |this| this.visible())
+                            .child(
+                                Button::new(format!("rename-conversation-{rename_id}"))
+                                    .icon(IconName::Replace)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Rename conversation")
+                                    .on_click({
+                                        let panel = panel.clone();
+                                        move |_, window, cx| {
+                                            panel.update(cx, |this, cx| {
+                                                this.rename_conversation(rename_id.clone(), window, cx)
+                                            });
+                                        }
+                                    }),
+                            )
+                            .child(
+                                Button::new(format!("delete-conversation-{delete_id}"))
+                                    .icon(IconName::Delete)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Delete conversation")
+                                    .on_click({
+                                        let panel = panel.clone();
+                                        move |_, _, cx| {
+                                            panel
+                                                .update(cx, |this, cx| this.delete_conversation(delete_id.clone(), cx));
+                                        }
+                                    }),
+                            ),
+                    )
+                });
+
             ListItem::new(ix)
                 .w_full()
                 .rounded(cx.theme().radius)
                 .py_1()
                 .px_2()
                 .pl(px(14.) * entry.depth() + px(8.))
-                .child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_2()
-                        .child(Icon::new(icon).size(px(14.)).text_color(cx.theme().muted_foreground))
-                        .child(
-                            gpui::div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_ellipsis()
-                                .child(normalize_title(item.label.as_str())),
-                        ),
-                )
+                .child(row)
                 .on_click({
                     let panel = panel.clone();
                     let tree_state = tree_state.clone();
@@ -488,10 +491,8 @@ fn build_conversation_tree(
             .and_then(serde_json::Value::as_str)
             .filter(|value| !value.is_empty())
             .unwrap_or("Other");
-        let item = TreeItem::new(
-            format!("conversation:{}", conversation.id),
-            normalize_title(&conversation.name),
-        );
+        let label = conversation_label(conversation);
+        let item = TreeItem::new(format!("conversation:{}", conversation.id), label);
         if is_temporary_conversation(conversation) {
             latest.push((conversation.modified_at, item));
         } else {
@@ -540,6 +541,14 @@ fn build_conversation_tree(
 
 fn normalize_title(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn conversation_label(conversation: &ConversationResponse) -> String {
+    let title = normalize_title(&conversation.name);
+    match conversation.assistant.as_ref().map(|assistant| assistant.name.trim()) {
+        Some(agent) if !agent.is_empty() => format!("{title} · {agent}"),
+        _ => title,
+    }
 }
 
 fn is_temporary_conversation(conversation: &ConversationResponse) -> bool {
@@ -624,8 +633,6 @@ impl Focusable for SessionManagerPanel {
 impl Render for SessionManagerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let can_delete = self.selected_conversation_id(cx).is_some();
-        let can_rename = can_delete;
         let tree_is_empty = self.state.conversations.is_empty() && self.aionrs_sessions.is_empty();
         let tree_is_loading = self.state.is_loading || self.loading_aionrs_sessions;
         v_flex()
@@ -651,37 +658,16 @@ impl Render for SessionManagerPanel {
                             .gap_1()
                             .child(
                                 Button::new("new-conversation")
-                                    .label("New conversation")
+                                    .icon(IconName::Plus)
                                     .ghost()
                                     .xsmall()
+                                    .tooltip("New conversation")
                                     .disabled(self.available_assistants.is_empty())
                                     .on_click(
                                         cx.listener(|this, _, window, cx| {
                                             this.open_new_conversation_dialog(window, cx)
                                         }),
                                     ),
-                            )
-                            .child(
-                                Button::new("rename-selected-conversation")
-                                    .icon(Icon::new(IconName::Replace))
-                                    .ghost()
-                                    .xsmall()
-                                    .disabled(!can_rename)
-                                    .tooltip("Rename selected conversation")
-                                    .on_click(
-                                        cx.listener(|this, _, window, cx| {
-                                            this.rename_selected_conversation(window, cx)
-                                        }),
-                                    ),
-                            )
-                            .child(
-                                Button::new("delete-selected-conversation")
-                                    .icon(Icon::new(IconName::Delete))
-                                    .ghost()
-                                    .xsmall()
-                                    .disabled(!can_delete)
-                                    .tooltip("Delete selected conversation")
-                                    .on_click(cx.listener(|this, _, _, cx| this.delete_selected_conversation(cx))),
                             )
                             .child(
                                 Button::new("refresh-conversations")

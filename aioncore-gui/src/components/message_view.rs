@@ -1,5 +1,5 @@
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, IntoElement, ParentElement, SharedString, Styled, Window, div,
+    AnyElement, App, ClickEvent, ElementId, IntoElement, ParentElement, RenderOnce, SharedString, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
@@ -11,18 +11,20 @@ use gpui_component::{
 };
 use serde_json::Value;
 
+use super::DiffSummary;
 use crate::core::aioncore::MessageView;
 
 pub fn render_message(
     message: &MessageView,
     expanded: bool,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     match message.kind.as_str() {
         "text" | "content" => render_text_message(message, cx),
         "thinking" => render_thinking(message, expanded, on_toggle, cx),
-        "tool_call" | "acp_tool_call" => render_tool_call(message, expanded, on_toggle, cx),
+        "tool_call" | "acp_tool_call" => render_tool_call(message, expanded, on_toggle, window, cx),
         "tool_group" => render_tool_group(message, cx),
         "error" | "tips" => render_error(message, cx),
         _ => render_fallback(message, cx),
@@ -154,6 +156,7 @@ fn render_tool_call(
     message: &MessageView,
     expanded: bool,
     on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
     let tool = ToolCallView::parse(message);
@@ -163,6 +166,8 @@ fn render_tool_call(
         .unwrap_or_else(|| message.status.as_deref().unwrap_or("pending"));
     let (status_icon, status_color) = status_presentation(status, cx);
     let has_details = tool.description.is_some() || tool.input.is_some() || tool.output.is_some();
+    let diff_summary = DiffSummary::from_value(&message.content);
+    let has_details = has_details || diff_summary.is_some();
 
     let mut container = v_flex().w_full().gap_2().pl_6().child(
         h_flex()
@@ -203,6 +208,9 @@ fn render_tool_call(
     );
 
     if expanded && has_details {
+        if let Some(summary) = diff_summary {
+            container = container.child(RenderOnce::render(summary, window, cx));
+        }
         container = container.child(render_tool_details(&tool, cx));
     }
     container.into_any_element()

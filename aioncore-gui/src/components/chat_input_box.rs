@@ -84,6 +84,7 @@ pub struct ChatInputBox {
     agent_select: Option<Entity<SelectState<Vec<AgentItem>>>>,
     agent_status_text: Option<String>,
     agent_icon: Option<IconName>,
+    agent_name: Option<String>,
     pasted_images: Vec<ClipboardImage>,     // Temporary PNG attachment files.
     code_selections: Vec<AddCodeSelection>, // Code selections from editor
     selected_files: Vec<String>,            // Selected file paths from file picker
@@ -124,6 +125,7 @@ impl ChatInputBox {
             agent_select: None,
             agent_status_text: None,
             agent_icon: None,
+            agent_name: None,
             pasted_images: Vec::new(),
             code_selections: Vec::new(),
             selected_files: Vec::new(),
@@ -194,6 +196,11 @@ impl ChatInputBox {
 
     pub fn agent_icon(mut self, icon: IconName) -> Self {
         self.agent_icon = Some(icon);
+        self
+    }
+
+    pub fn agent_name(mut self, name: impl Into<String>) -> Self {
+        self.agent_name = Some(name.into());
         self
     }
 
@@ -641,7 +648,10 @@ impl RenderOnce for ChatInputBox {
                                         this.child(div().text_xs().text_color(theme.muted_foreground).child(text))
                                     })
                                     .when_some(self.agent_icon, |this, icon| {
-                                        this.child(Icon::new(icon).size(px(14.)).text_color(theme.accent))
+                                        this.child(Icon::new(icon).size(px(14.)).text_color(theme.foreground))
+                                    })
+                                    .when_some(self.agent_name, |this, name| {
+                                        this.child(div().text_xs().text_color(theme.foreground).child(name))
                                     })
                                     .when_some(self.mode_select, |this, mode_select| {
                                         this.child(Select::new(&mode_select).small().appearance(false))

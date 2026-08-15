@@ -1,6 +1,5 @@
 use std::{path::PathBuf, rc::Rc, str::FromStr};
 
-use autocorrect::ignorer::Ignorer;
 use gpui::{prelude::FluentBuilder, *};
 use gpui_component::{
     ActiveTheme, Icon, IconName, Sizable, StyledExt, WindowExt,
@@ -77,11 +76,7 @@ impl CodeEditorPanel {
         cx.new(|cx| Self::new(window, None, cx))
     }
 
-    pub fn view_with_working_dir(
-        window: &mut Window,
-        working_dir: Option<PathBuf>,
-        cx: &mut App,
-    ) -> Entity<Self> {
+    pub fn view_with_working_dir(window: &mut Window, working_dir: Option<PathBuf>, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, working_dir, cx))
     }
 
@@ -113,8 +108,7 @@ impl CodeEditorPanel {
         let go_to_line_state = cx.new(|cx| InputState::new(window, cx));
 
         let tree_state = cx.new(|cx| TreeState::new(cx));
-        let working_dir =
-            working_dir.unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
+        let working_dir = working_dir.unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
 
         let _subscriptions = vec![cx.subscribe(&editor, |this, _, _: &InputEvent, cx| {
             this.lint_document(cx);
@@ -151,8 +145,7 @@ impl CodeEditorPanel {
         }
 
         cx.spawn(async move |cx| {
-            let ignorer = Ignorer::new(&path.to_string_lossy());
-            let items = build_file_items(&ignorer, &path, &path);
+            let items = build_file_items(&path);
 
             _ = state.update(cx, |state, cx| {
                 state.set_items(items, cx);
@@ -192,11 +185,7 @@ impl CodeEditorPanel {
         window.open_dialog(cx, move |dialog, window, cx| {
             input_state.update(cx, |state, cx| {
                 let cursor_pos = editor.read(cx).cursor_position();
-                state.set_placeholder(
-                    format!("{}:{}", cursor_pos.line, cursor_pos.character),
-                    window,
-                    cx,
-                );
+                state.set_placeholder(format!("{}:{}", cursor_pos.line, cursor_pos.character), window, cx);
                 state.focus(window, cx);
             });
 
@@ -205,10 +194,7 @@ impl CodeEditorPanel {
                 .child(Input::new(&input_state))
                 .footer(
                     DialogFooter::new()
-                        .child(
-                            DialogClose::new()
-                                .child(Button::new("cancel").label("Cancel").outline()),
-                        )
+                        .child(DialogClose::new().child(Button::new("cancel").label("Cancel").outline()))
                         .child(DialogAction::new().child(Button::new("ok").label("OK").primary())),
                 )
                 .on_ok({
@@ -302,16 +288,8 @@ impl CodeEditorPanel {
         });
     }
 
-    fn open_file(
-        view: Entity<Self>,
-        path: PathBuf,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> Result<()> {
-        let language = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or_default();
+    fn open_file(view: Entity<Self>, path: PathBuf, window: &mut Window, cx: &mut App) -> Result<()> {
+        let language = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default();
         let language = Language::from_str(&language);
         let content = std::fs::read_to_string(&path)?;
         let path_clone = path.clone();
@@ -337,47 +315,38 @@ impl CodeEditorPanel {
 
     fn render_file_tree(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
-        tree(
-            &self.tree_state,
-            move |ix, entry, _selected, _window, cx| {
-                view.update(cx, |_, cx| {
-                    let item = entry.item();
-                    let icon = if !entry.is_folder() {
-                        IconName::File
-                    } else if entry.is_expanded() {
-                        IconName::FolderOpen
-                    } else {
-                        IconName::Folder
-                    };
+        tree(&self.tree_state, move |ix, entry, _selected, _window, cx| {
+            view.update(cx, |_, cx| {
+                let item = entry.item();
+                let icon = if !entry.is_folder() {
+                    IconName::File
+                } else if entry.is_expanded() {
+                    IconName::FolderOpen
+                } else {
+                    IconName::Folder
+                };
 
-                    ListItem::new(ix)
-                        .w_full()
-                        .rounded(cx.theme().radius)
-                        .py_0p5()
-                        .px_2()
-                        .pl(px(16.) * entry.depth() + px(8.))
-                        .child(h_flex().gap_2().child(icon).child(item.label.clone()))
-                        .on_click(cx.listener({
-                            let item = item.clone();
-                            move |_, _, _window, cx| {
-                                if item.is_folder() {
-                                    return;
-                                }
-
-                                Self::open_file(
-                                    cx.entity(),
-                                    PathBuf::from(item.id.as_str()),
-                                    _window,
-                                    cx,
-                                )
-                                .ok();
-
-                                cx.notify();
+                ListItem::new(ix)
+                    .w_full()
+                    .rounded(cx.theme().radius)
+                    .py_0p5()
+                    .px_2()
+                    .pl(px(16.) * entry.depth() + px(8.))
+                    .child(h_flex().gap_2().child(icon).child(item.label.clone()))
+                    .on_click(cx.listener({
+                        let item = item.clone();
+                        move |_, _, _window, cx| {
+                            if item.is_folder() {
+                                return;
                             }
-                        }))
-                })
-            },
-        )
+
+                            Self::open_file(cx.entity(), PathBuf::from(item.id.as_str()), _window, cx).ok();
+
+                            cx.notify();
+                        }
+                    }))
+            })
+        })
         .text_sm()
         .p_1()
         .bg(cx.theme().sidebar)
@@ -385,11 +354,7 @@ impl CodeEditorPanel {
         .h_full()
     }
 
-    fn render_toggle_file_tree_button(
-        &self,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_toggle_file_tree_button(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         Button::new("toggle-file-tree")
             .icon(if self.show_file_tree {
                 IconName::PanelLeftClose
@@ -404,11 +369,7 @@ impl CodeEditorPanel {
             }))
     }
 
-    fn render_line_number_button(
-        &self,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_line_number_button(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         Button::new("line-number")
             .ghost()
             .xsmall()
@@ -454,11 +415,7 @@ impl CodeEditorPanel {
             }))
     }
 
-    fn render_indent_guides_button(
-        &self,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_indent_guides_button(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         Button::new("indent-guides")
             .ghost()
             .xsmall()
@@ -481,11 +438,7 @@ impl CodeEditorPanel {
             }))
     }
 
-    fn render_go_to_line_button(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    fn render_go_to_line_button(&self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let position = self.editor.read(cx).cursor_position();
         let cursor = self.editor.read(cx).cursor();
 
@@ -519,19 +472,14 @@ impl CodeEditorPanel {
             h_flex()
                 .gap_2()
                 .items_center()
-                .child(
-                    Button::new("selection-range")
-                        .ghost()
-                        .xsmall()
-                        .label(format!(
-                            "Sel: {}:{} - {}:{} ({} chars)",
-                            start_pos.line + 1,
-                            start_pos.character + 1,
-                            end_pos.line + 1,
-                            end_pos.character + 1,
-                            length
-                        )),
-                )
+                .child(Button::new("selection-range").ghost().xsmall().label(format!(
+                    "Sel: {}:{} - {}:{} ({} chars)",
+                    start_pos.line + 1,
+                    start_pos.character + 1,
+                    end_pos.line + 1,
+                    end_pos.character + 1,
+                    length
+                )))
                 .child(
                     Button::new("add-selection-to-chat")
                         .icon(IconName::SquareTerminal)
@@ -551,12 +499,7 @@ impl CodeEditorPanel {
         }
     }
 
-    fn add_selection_to_chat(
-        &self,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-        selection: (Position, Position),
-    ) {
+    fn add_selection_to_chat(&self, _window: &mut Window, cx: &mut Context<Self>, selection: (Position, Position)) {
         use gpui_component::input::RopeExt;
 
         let (start_pos, end_pos) = selection;
@@ -608,35 +551,30 @@ impl CodeEditorPanel {
     }
 
     fn render_empty_state(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_4()
-            .child(
-                v_flex()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        div()
-                            .child(IconName::File)
-                            .text_color(cx.theme().muted_foreground)
-                            .text_size(px(48.)),
-                    )
-                    .child(
-                        div()
-                            .text_xl()
-                            .font_semibold()
-                            .text_color(cx.theme().foreground)
-                            .child("No File Opened"),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Select a file from the file tree to start editing"),
-                    ),
-            )
+        v_flex().size_full().items_center().justify_center().gap_4().child(
+            v_flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .child(IconName::File)
+                        .text_color(cx.theme().muted_foreground)
+                        .text_size(px(48.)),
+                )
+                .child(
+                    div()
+                        .text_xl()
+                        .font_semibold()
+                        .text_color(cx.theme().foreground)
+                        .child("No File Opened"),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child("Select a file from the file tree to start editing"),
+                ),
+        )
     }
 }
 
@@ -728,37 +666,32 @@ impl Render for CodeEditorPanel {
         };
 
         v_flex().id("app").size_full().child(
-            v_flex()
-                .id("source")
-                .w_full()
-                .flex_1()
-                .child(main_content)
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .text_sm()
-                        .bg(cx.theme().background)
-                        // .py_1p5()
-                        .h(px(30.))
-                        .px_4()
-                        .border_t_1()
-                        .border_color(cx.theme().border)
-                        .text_color(cx.theme().muted_foreground)
-                        .child(
-                            h_flex()
-                                .gap_3()
-                                .child(self.render_toggle_file_tree_button(window, cx))
-                                .child(self.render_line_number_button(window, cx))
-                                .child(self.render_soft_wrap_button(window, cx))
-                                .child(self.render_indent_guides_button(window, cx)),
-                        )
-                        .child(
-                            h_flex()
-                                .gap_3()
-                                .child(self.render_selection_range_info(window, cx, selection_info))
-                                .child(self.render_go_to_line_button(window, cx)),
-                        ),
-                ),
+            v_flex().id("source").w_full().flex_1().child(main_content).child(
+                h_flex()
+                    .justify_between()
+                    .text_sm()
+                    .bg(cx.theme().background)
+                    // .py_1p5()
+                    .h(px(30.))
+                    .px_4()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(self.render_toggle_file_tree_button(window, cx))
+                            .child(self.render_line_number_button(window, cx))
+                            .child(self.render_soft_wrap_button(window, cx))
+                            .child(self.render_indent_guides_button(window, cx)),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_3()
+                            .child(self.render_selection_range_info(window, cx, selection_info))
+                            .child(self.render_go_to_line_button(window, cx)),
+                    ),
+            ),
         )
     }
 }

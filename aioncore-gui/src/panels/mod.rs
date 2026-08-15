@@ -2,6 +2,7 @@
 
 #[path = "settings_panel/types.rs"]
 mod app_settings;
+pub mod code_editor;
 pub mod conversation;
 pub mod dock_panel;
 mod project_panel;

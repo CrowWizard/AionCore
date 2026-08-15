@@ -6,10 +6,10 @@ use smol::Timer;
 use std::{sync::Arc, time::Duration};
 
 /// Panels that should be excluded from loading and saving
-const EXCLUDED_PANELS: &[&str] = &["CodeEditorPanel", "ToolCallDetailPanel"];
+const EXCLUDED_PANELS: &[&str] = &["ToolCallDetailPanel"];
 
 use crate::{
-    AppSettings, AppState, AppTitleBar, ConversationPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
+    AppSettings, AppState, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
     core::updater::{UpdateCheckResult, UpdateManager},
     panels::dock_panel::DockPanelContainer,
 };
@@ -22,7 +22,7 @@ mod startup;
 
 const MAIN_DOCK_AREA: DockAreaTab = DockAreaTab {
     id: "main-dock",
-    version: 5,
+    version: 6,
 };
 
 pub struct DockWorkspace {
@@ -332,6 +332,7 @@ impl DockWorkspace {
             Axis::Vertical,
             vec![DockItem::tabs(
                 vec![
+                    Arc::new(DockPanelContainer::panel::<ProjectPanel>(window, cx)),
                     Arc::new(DockPanelContainer::panel::<SessionManagerPanel>(window, cx)),
                     Arc::new(DockPanelContainer::panel::<TeamPanel>(window, cx)),
                 ],
@@ -376,15 +377,21 @@ impl DockWorkspace {
         DockItem::split_with_sizes(
             Axis::Horizontal,
             vec![
-                // Left panel: ConversationPanel (ACP-enabled conversation)
+                // 左侧保留文件树和编辑器，右侧承载 AionCore Conversation。
+                DockItem::tabs(
+                    vec![Arc::new(DockPanelContainer::panel::<
+                        crate::panels::code_editor::CodeEditorPanel,
+                    >(window, cx))],
+                    &dock_area,
+                    window,
+                    cx,
+                ),
                 DockItem::tabs(
                     vec![Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx))],
                     &dock_area,
                     window,
                     cx,
                 ),
-                // Right panel: Combined conversation and input
-                // right_side,
             ],
             vec![None, None],
             &dock_area,
