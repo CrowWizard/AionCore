@@ -12,7 +12,10 @@ use gpui_component::{
     tree::{TreeItem, TreeState, tree},
     v_flex,
 };
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 use crate::{
     AppState, PanelAction,
@@ -34,6 +37,7 @@ pub struct SessionManagerPanel {
     loading_assistants: bool,
     aionrs_sessions: Vec<AionrsSessionResponse>,
     loading_aionrs_sessions: bool,
+    hidden_workspaces: HashSet<String>,
 }
 
 impl DockPanel for SessionManagerPanel {
@@ -71,6 +75,7 @@ impl SessionManagerPanel {
             loading_assistants: false,
             aionrs_sessions: Vec::new(),
             loading_aionrs_sessions: false,
+            hidden_workspaces: HashSet::new(),
         };
         panel.refresh(cx);
         panel.refresh_assistants(cx);
@@ -164,7 +169,7 @@ impl SessionManagerPanel {
             let Some(workspace) = utils::pick_folder("Select conversation workspace").await else {
                 return;
             };
-            let result = store.create(None, assistant.id, workspace).await;
+            let result = store.create(None, assistant.id, Some(workspace)).await;
             let _ = window.update(|_, cx| {
                 if let Some(entity) = entity.upgrade() {
                     entity.update(cx, |this, cx| {
@@ -274,7 +279,7 @@ impl SessionManagerPanel {
     fn sync_tree(&mut self, cx: &mut Context<Self>) {
         let selected_id = self.tree_state.read(cx).selected_item().map(|item| item.id.clone());
         let expanded = expanded_tree_items(&self.tree_items);
-        let items = build_conversation_tree(&self.state, &self.aionrs_sessions, &expanded);
+        let items = build_conversation_tree(&self.state, &self.aionrs_sessions, &expanded, &self.hidden_workspaces);
         self.agent_icons = self
             .state
             .conversations
@@ -356,6 +361,22 @@ impl SessionManagerPanel {
         });
     }
 
+    fn new_conversation_for_workspace(&mut self, workspace: String, window: &mut Window, cx: &mut Context<Self>) {
+        window.dispatch_action(
+            Box::new(PanelAction::add_conversation_for_workspace(
+                PathBuf::from(workspace),
+                gpui_component::dock::DockPlacement::Center,
+            )),
+            cx,
+        );
+    }
+
+    fn hide_workspace(&mut self, workspace: String, cx: &mut Context<Self>) {
+        self.hidden_workspaces.insert(workspace);
+        self.sync_tree(cx);
+        cx.notify();
+    }
+
     fn selected_conversation_id(&self, cx: &App) -> Option<String> {
         self.tree_state
             .read(cx)
@@ -371,6 +392,7 @@ impl SessionManagerPanel {
         tree(&self.tree_state, move |ix, entry, _selected, _window, cx| {
             let item = entry.item().clone();
             let is_conversation = item.id.as_str().starts_with("conversation:");
+            let workspace_id = item.id.as_str().strip_prefix("workspace:").map(str::to_owned);
             let is_saved_session = item.id.as_str().starts_with("aionrs:");
             let conversation_id = item.id.as_str().strip_prefix("conversation:");
             let icon = if entry.is_folder() {
@@ -413,7 +435,7 @@ impl SessionManagerPanel {
                     this.child(
                         h_flex()
                             .invisible()
-                            .group_hover(row_group, |this| this.visible())
+                            .group_hover(row_group.clone(), |this| this.visible())
                             .child(
                                 Button::new(format!("rename-conversation-{rename_id}"))
                                     .icon(IconName::Replace)
@@ -440,6 +462,47 @@ impl SessionManagerPanel {
                                         move |_, _, cx| {
                                             panel
                                                 .update(cx, |this, cx| this.delete_conversation(delete_id.clone(), cx));
+                                        }
+                                    }),
+                            ),
+                    )
+                })
+                .when_some(workspace_id.clone(), |this, workspace| {
+                    let create_workspace = workspace.clone();
+                    let hide_workspace = workspace.clone();
+                    this.child(
+                        h_flex()
+                            .invisible()
+                            .group_hover(row_group.clone(), |this| this.visible())
+                            .child(
+                                Button::new(format!("new-workspace-conversation-{workspace}"))
+                                    .icon(IconName::Plus)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("New conversation in this folder")
+                                    .on_click({
+                                        let panel = panel.clone();
+                                        move |_, window, cx| {
+                                            panel.update(cx, |this, cx| {
+                                                this.new_conversation_for_workspace(
+                                                    create_workspace.clone(),
+                                                    window,
+                                                    cx,
+                                                )
+                                            })
+                                        }
+                                    }),
+                            )
+                            .child(
+                                Button::new(format!("hide-workspace-{workspace}"))
+                                    .icon(IconName::Close)
+                                    .ghost()
+                                    .xsmall()
+                                    .tooltip("Remove folder from this list")
+                                    .on_click({
+                                        let panel = panel.clone();
+                                        move |_, _, cx| {
+                                            panel.update(cx, |this, cx| this.hide_workspace(hide_workspace.clone(), cx))
                                         }
                                     }),
                             ),
@@ -481,6 +544,7 @@ fn build_conversation_tree(
     state: &ConversationState,
     aionrs_sessions: &[AionrsSessionResponse],
     expanded: &BTreeMap<String, bool>,
+    hidden_workspaces: &HashSet<String>,
 ) -> Vec<TreeItem> {
     let mut by_workspace = BTreeMap::<String, Vec<TreeItem>>::new();
     let mut latest = Vec::new();
@@ -495,7 +559,7 @@ fn build_conversation_tree(
         let item = TreeItem::new(format!("conversation:{}", conversation.id), label);
         if is_temporary_conversation(conversation) {
             latest.push((conversation.modified_at, item));
-        } else {
+        } else if !hidden_workspaces.contains(workspace) {
             by_workspace.entry(workspace.to_owned()).or_default().push(item);
         }
     }
@@ -779,7 +843,7 @@ mod tests {
             message_count: 2,
         }];
 
-        let items = build_conversation_tree(&state, &saved, &BTreeMap::new());
+        let items = build_conversation_tree(&state, &saved, &BTreeMap::new(), &HashSet::new());
 
         assert_eq!(items.len(), 3);
         assert_eq!(items[0].label.as_str(), "alpha · work");
@@ -797,11 +861,11 @@ mod tests {
             conversations: vec![conversation("c1", "First", "/work/alpha")],
             ..Default::default()
         };
-        let initial = build_conversation_tree(&state, &[], &BTreeMap::new());
+        let initial = build_conversation_tree(&state, &[], &BTreeMap::new(), &HashSet::new());
         let collapsed = initial[0].clone().expanded(false);
         let expanded = expanded_tree_items(&[collapsed]);
 
-        let refreshed = build_conversation_tree(&state, &[], &expanded);
+        let refreshed = build_conversation_tree(&state, &[], &expanded, &HashSet::new());
 
         assert!(!refreshed[0].is_expanded());
     }
@@ -822,11 +886,28 @@ mod tests {
             ..Default::default()
         };
 
-        let items = build_conversation_tree(&state, &[], &BTreeMap::new());
+        let items = build_conversation_tree(&state, &[], &BTreeMap::new(), &HashSet::new());
 
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].id.as_str(), "latest-conversations");
         assert_eq!(items[0].children[0].label.as_str(), "Newer");
         assert_eq!(items[0].children[1].label.as_str(), "Older");
+    }
+
+    #[test]
+    fn hidden_workspace_is_removed_without_hiding_other_folders() {
+        let state = ConversationState {
+            conversations: vec![
+                conversation("c1", "First", "/work/alpha"),
+                conversation("c2", "Second", "/work/beta"),
+            ],
+            ..Default::default()
+        };
+        let hidden = HashSet::from(["/work/alpha".to_owned()]);
+
+        let items = build_conversation_tree(&state, &[], &BTreeMap::new(), &hidden);
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id.as_str(), "workspace:/work/beta");
     }
 }

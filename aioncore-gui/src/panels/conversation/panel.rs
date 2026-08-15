@@ -8,6 +8,7 @@ use gpui_component::{
     button::{Button, ButtonVariants},
     h_flex,
     input::InputState,
+    menu::{DropdownMenu as _, PopupMenuItem},
     skeleton::Skeleton,
     spinner::Spinner,
     v_flex,
@@ -203,6 +204,15 @@ impl ConversationPanel {
         let entity = cx.new(|cx| Self::new(window, cx));
         Self::subscribe_to_code_selections(&entity, cx);
         log::info!("✅ ConversationPanel view created and subscribed");
+        entity
+    }
+
+    pub fn view_for_workspace(workspace: std::path::PathBuf, window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let entity = Self::view(window, cx);
+        entity.update(cx, |panel, cx| {
+            panel.draft_workspace = Some(workspace);
+            cx.notify();
+        });
         entity
     }
 
@@ -535,11 +545,11 @@ impl ConversationPanel {
             let conversation_id = match conversation_id {
                 Some(id) => id,
                 None => {
-                    let (Some(assistant_id), Some(workspace)) = (draft_assistant_id, draft_workspace) else {
-                        log::warn!("Draft conversation requires an agent and workspace before sending");
+                    let Some(assistant_id) = draft_assistant_id else {
+                        log::warn!("Draft conversation requires an agent before sending");
                         return;
                     };
-                    match store.create(None, assistant_id, workspace).await {
+                    match store.create(None, assistant_id, draft_workspace).await {
                         Ok(conversation) => conversation.id,
                         Err(error) => {
                             log::warn!("AionCore conversation creation failed: {error:?}");
@@ -600,8 +610,19 @@ impl ConversationPanel {
         .detach();
     }
 
+    fn clear_draft_workspace(&mut self, cx: &mut Context<Self>) {
+        self.draft_workspace = None;
+        cx.notify();
+    }
+
     fn render_draft_config(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let selected = self.draft_assistant_id.clone();
+        let selected_agent = self
+            .draft_assistants
+            .iter()
+            .find(|assistant| Some(assistant.id.as_str()) == selected.as_deref())
+            .map(|assistant| assistant.name.clone())
+            .unwrap_or_else(|| "Choose agent".to_owned());
         let workspace = self
             .draft_workspace
             .as_ref()
@@ -618,25 +639,51 @@ impl ConversationPanel {
             .border_t_1()
             .border_color(cx.theme().border)
             .child(
-                Button::new("draft-workspace")
-                    .icon(IconName::Folder)
-                    .label(workspace)
-                    .ghost()
-                    .xsmall()
-                    .on_click(cx.listener(|this, _, window, cx| this.choose_draft_workspace(window, cx))),
+                h_flex()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        Button::new("draft-workspace")
+                            .icon(IconName::Folder)
+                            .label(workspace)
+                            .ghost()
+                            .xsmall()
+                            .on_click(cx.listener(|this, _, window, cx| this.choose_draft_workspace(window, cx))),
+                    )
+                    .when(self.draft_workspace.is_some(), |this| {
+                        this.child(
+                            Button::new("clear-draft-workspace")
+                                .icon(IconName::Close)
+                                .ghost()
+                                .xsmall()
+                                .tooltip("Clear workspace folder")
+                                .on_click(cx.listener(|this, _, _, cx| this.clear_draft_workspace(cx))),
+                        )
+                    }),
             )
-            .children(self.draft_assistants.iter().enumerate().map(|(index, assistant)| {
-                let assistant_id = assistant.id.clone();
-                Button::new(("draft-agent", index))
-                    .label(assistant.name.clone())
+            .child(
+                Button::new("draft-agent-menu")
+                    .icon(IconName::Bot)
+                    .label(selected_agent)
                     .ghost()
                     .xsmall()
-                    .selected(selected.as_deref() == Some(assistant.id.as_str()))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.draft_assistant_id = Some(assistant_id.clone());
-                        cx.notify();
-                    }))
-            }))
+                    .dropdown_menu({
+                        let assistants = self.draft_assistants.clone();
+                        let panel = cx.entity();
+                        move |menu, window, _| {
+                            assistants.iter().fold(menu, |menu, assistant| {
+                                let assistant_id = assistant.id.clone();
+                                menu.item(PopupMenuItem::new(assistant.name.clone()).on_click(window.listener_for(
+                                    &panel,
+                                    move |this, _, _, cx| {
+                                        this.draft_assistant_id = Some(assistant_id.clone());
+                                        cx.notify();
+                                    },
+                                )))
+                            })
+                        }
+                    }),
+            )
             .into_any_element()
     }
 

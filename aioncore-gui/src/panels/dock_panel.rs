@@ -17,7 +17,7 @@ use crate::AppState;
 use crate::panels::{
     ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel, code_editor::CodeEditorPanel,
 };
-use crate::{PanelAction, ShowPanelInfo, ToggleSearch};
+use crate::{PanelAction, ShowPanelInfo, ToggleFileManager, ToggleSearch};
 
 #[derive(IntoElement)]
 pub struct DockPanelSection {
@@ -248,6 +248,24 @@ impl DockPanelContainer {
         });
 
         view
+    }
+
+    pub fn panel_for_workspace(workspace: std::path::PathBuf, window: &mut Window, cx: &mut App) -> Entity<Self> {
+        let name = ConversationPanel::title();
+        let title_key = ConversationPanel::title_key();
+        let description = ConversationPanel::description();
+        cx.new(|cx| {
+            let panel = ConversationPanel::view_for_workspace(workspace, window, cx);
+            let mut container = Self::new(cx)
+                .agent_studio(panel.into(), ConversationPanel::klass())
+                .on_active(ConversationPanel::on_active_any);
+            container.name = name.into();
+            container.title_key = title_key.map(SharedString::from);
+            container.description = description.into();
+            container.closable = ConversationPanel::closable();
+            container.zoomable = ConversationPanel::zoomable();
+            container
+        })
     }
 
     pub fn replace_with_conversation_session(
@@ -533,6 +551,12 @@ impl Panel for DockPanelContainer {
     ) -> Option<Vec<Button>> {
         let mut buttons = vec![];
         if self.agent_studio_klass.as_deref() == Some("ConversationPanel") {
+            buttons.push(
+                Button::new("toggle-file-manager")
+                    .icon(IconName::Folder)
+                    .tooltip("Show or hide file manager")
+                    .on_click(|_, window, cx| window.dispatch_action(Box::new(ToggleFileManager), cx)),
+            );
             buttons.push(
                 Button::new("new-conversation-tab")
                     .icon(IconName::Plus)

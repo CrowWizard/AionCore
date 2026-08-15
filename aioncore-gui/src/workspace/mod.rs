@@ -22,7 +22,7 @@ mod startup;
 
 const MAIN_DOCK_AREA: DockAreaTab = DockAreaTab {
     id: "main-dock",
-    version: 6,
+    version: 7,
 };
 
 pub struct DockWorkspace {
@@ -364,6 +364,20 @@ impl DockWorkspace {
             view.set_version(MAIN_DOCK_AREA.version, window, cx);
             view.set_center(dock_item, window, cx);
             view.set_left_dock(left_panels, Some(px(350.)), true, window, cx);
+            view.set_right_dock(
+                DockItem::tabs(
+                    vec![Arc::new(DockPanelContainer::panel::<
+                        crate::panels::code_editor::CodeEditorPanel,
+                    >(window, cx))],
+                    &dock_area,
+                    window,
+                    cx,
+                ),
+                Some(px(420.)),
+                false,
+                window,
+                cx,
+            );
             view.set_bottom_dock(bottom_panels, Some(px(200.)), true, window, cx);
 
             if let Err(e) = Self::save_state(&view.dump(cx)) {
@@ -373,27 +387,8 @@ impl DockWorkspace {
     }
 
     fn init_default_layout(dock_area: &WeakEntity<DockArea>, window: &mut Window, cx: &mut App) -> DockItem {
-        // Main layout: Left (CodeEditorPanel) and Right (Conversation + Input)
-        DockItem::split_with_sizes(
-            Axis::Horizontal,
-            vec![
-                // 左侧保留文件树和编辑器，右侧承载 AionCore Conversation。
-                DockItem::tabs(
-                    vec![Arc::new(DockPanelContainer::panel::<
-                        crate::panels::code_editor::CodeEditorPanel,
-                    >(window, cx))],
-                    &dock_area,
-                    window,
-                    cx,
-                ),
-                DockItem::tabs(
-                    vec![Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx))],
-                    &dock_area,
-                    window,
-                    cx,
-                ),
-            ],
-            vec![None, None],
+        DockItem::tabs(
+            vec![Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx))],
             &dock_area,
             window,
             cx,
@@ -477,6 +472,7 @@ impl Render for DockWorkspace {
             .id("agent_studio-workspace")
             .on_action(cx.listener(Self::on_action_panel_action))
             .on_action(cx.listener(Self::on_action_select_project_workspace))
+            .on_action(cx.listener(Self::on_action_toggle_file_manager))
             .on_action(cx.listener(Self::on_action_toggle_panel_visible))
             .on_action(cx.listener(Self::on_action_toggle_dock_toggle_button))
             .on_action(cx.listener(Self::on_action_open_setting_panel))

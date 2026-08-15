@@ -171,7 +171,6 @@ impl DockWorkspace {
                         Button::new("startup-workspace-continue")
                             .label("Open AionCore GUI")
                             .primary()
-                            .disabled(!self.startup_state.workspace_ready())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.startup_state.advance_step_if_needed();
                                 cx.notify();

@@ -17,7 +17,10 @@ use std::path::PathBuf;
 #[derive(Clone, PartialEq, Deserialize)]
 pub enum PanelKind {
     /// 对话面板，可选 session_id
-    Conversation { session_id: Option<String> },
+    Conversation {
+        session_id: Option<String>,
+        workspace: Option<PathBuf>,
+    },
     /// 终端面板，可选工作目录
     Terminal {
         #[serde(skip)]
@@ -56,7 +59,10 @@ pub struct PanelAction(pub PanelCommand);
 impl PanelAction {
     pub fn add_conversation(placement: DockPlacement) -> Self {
         Self(PanelCommand::Add {
-            panel: PanelKind::Conversation { session_id: None },
+            panel: PanelKind::Conversation {
+                session_id: None,
+                workspace: None,
+            },
             placement,
         })
     }
@@ -65,6 +71,17 @@ impl PanelAction {
         Self(PanelCommand::Add {
             panel: PanelKind::Conversation {
                 session_id: Some(session_id),
+                workspace: None,
+            },
+            placement,
+        })
+    }
+
+    pub fn add_conversation_for_workspace(workspace: PathBuf, placement: DockPlacement) -> Self {
+        Self(PanelCommand::Add {
+            panel: PanelKind::Conversation {
+                session_id: None,
+                workspace: Some(workspace),
             },
             placement,
         })
@@ -96,7 +113,10 @@ impl PanelAction {
     }
 
     pub fn show_conversation(session_id: Option<String>) -> Self {
-        Self(PanelCommand::Show(PanelKind::Conversation { session_id }))
+        Self(PanelCommand::Show(PanelKind::Conversation {
+            session_id,
+            workspace: None,
+        }))
     }
 
     pub fn show_tool_call_detail(tool_call_id: String, tool_call: ToolCall) -> Self {
@@ -117,6 +137,10 @@ pub struct TogglePanelVisible(pub SharedString);
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = agent_studio, no_json)]
 pub struct SelectProjectWorkspace(pub PathBuf);
+
+#[derive(Action, Clone, PartialEq)]
+#[action(namespace = aioncore_gui, no_json)]
+pub struct ToggleFileManager;
 
 /// 添加会话面板
 ///

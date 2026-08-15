@@ -31,11 +31,11 @@ impl StartupState {
     }
 
     pub(in crate::workspace) fn workspace_ready(&self) -> bool {
-        self.workspace_selected
+        true
     }
 
     pub(in crate::workspace) fn is_complete(&self) -> bool {
-        self.intro_completed && self.workspace_ready()
+        self.intro_completed
     }
 
     pub(in crate::workspace) fn advance_step_if_needed(&mut self) {

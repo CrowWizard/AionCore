@@ -79,12 +79,15 @@ impl ConversationStore {
         &self,
         name: Option<String>,
         assistant_id: String,
-        workspace: std::path::PathBuf,
+        workspace: Option<std::path::PathBuf>,
     ) -> Result<ConversationResponse, CoreClientError> {
+        let extra = workspace
+            .map(|workspace| serde_json::json!({ "workspace": workspace }))
+            .unwrap_or_else(|| serde_json::json!({}));
         let request = CreateConversationRequest {
             name,
             assistant: super::models::AssistantConversationRequest { id: assistant_id },
-            extra: serde_json::json!({ "workspace": workspace }),
+            extra,
         };
         let response: ApiResponse<ConversationResponse> = self
             .client

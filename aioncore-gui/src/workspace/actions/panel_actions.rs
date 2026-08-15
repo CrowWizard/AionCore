@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{
     AppState, ConversationPanel, OpenSessionManager, PanelAction, SelectProjectWorkspace, SessionManagerPanel,
-    ToggleDockToggleButton, TogglePanelVisible,
+    ToggleDockToggleButton, ToggleFileManager, TogglePanelVisible,
     app::actions::{PanelCommand, PanelKind, Submit},
     panels::{
         DockPanel,
@@ -343,8 +343,8 @@ impl DockWorkspace {
     ) {
         match &action.0 {
             PanelCommand::Add { panel, placement } => match panel {
-                PanelKind::Conversation { session_id } => {
-                    self.add_conversation_panel_to(session_id.clone(), *placement, window, cx);
+                PanelKind::Conversation { session_id, workspace } => {
+                    self.add_conversation_panel_to(session_id.clone(), workspace.clone(), *placement, window, cx);
                 }
                 PanelKind::Terminal { working_directory } => {
                     self.add_terminal_panel_to(working_directory.clone(), *placement, window, cx);
@@ -360,7 +360,7 @@ impl DockWorkspace {
                 }
             },
             PanelCommand::Show(panel) => match panel {
-                PanelKind::Conversation { session_id } => {
+                PanelKind::Conversation { session_id, .. } => {
                     self.show_conversation_panel(session_id.clone(), window, cx);
                 }
                 PanelKind::Terminal { working_directory } => {
@@ -382,6 +382,7 @@ impl DockWorkspace {
     fn add_conversation_panel_to(
         &mut self,
         session_id: Option<String>,
+        workspace: Option<std::path::PathBuf>,
         placement: DockPlacement,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -404,7 +405,11 @@ impl DockWorkspace {
             return;
         }
 
-        let panel = Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx));
+        let panel = Arc::new(if let Some(workspace) = workspace {
+            DockPanelContainer::panel_for_workspace(workspace, window, cx)
+        } else {
+            DockPanelContainer::panel::<ConversationPanel>(window, cx)
+        });
         self.dock_area.update(cx, |dock_area, cx| {
             let was_dock_open = dock_area.is_dock_open(placement, cx);
             dock_area.add_panel(panel, placement, None, window, cx);
@@ -486,6 +491,17 @@ impl DockWorkspace {
             cx.notify();
         });
         cx.notify();
+    }
+
+    pub(in crate::workspace) fn on_action_toggle_file_manager(
+        &mut self,
+        _: &ToggleFileManager,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.dock_area.update(cx, |dock_area, cx| {
+            dock_area.toggle_dock(DockPlacement::Right, window, cx);
+        });
     }
 
     /// Handle ToggleDockToggleButton action - show/hide dock toggle buttons
