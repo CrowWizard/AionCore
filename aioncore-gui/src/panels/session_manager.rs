@@ -3,9 +3,11 @@ use gpui::{
     Styled, Window, prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable,
+    ActiveTheme, Disableable, Icon, IconName, Sizable, WindowExt,
     button::{Button, ButtonVariants},
+    dialog::{DialogAction, DialogClose, DialogFooter},
     h_flex,
+    input::{Input, InputState},
     list::ListItem,
     tree::{TreeItem, TreeState, tree},
     v_flex,
@@ -26,6 +28,7 @@ pub struct SessionManagerPanel {
     focus_handle: FocusHandle,
     tree_state: Entity<TreeState>,
     tree_items: Vec<TreeItem>,
+    agent_icons: std::collections::HashMap<String, IconName>,
     state: ConversationState,
     available_assistants: Vec<AssistantResponse>,
     loading_assistants: bool,
@@ -62,6 +65,7 @@ impl SessionManagerPanel {
             focus_handle: cx.focus_handle(),
             tree_state,
             tree_items: Vec::new(),
+            agent_icons: std::collections::HashMap::new(),
             state: ConversationState::default(),
             available_assistants: Vec::new(),
             loading_assistants: false,
@@ -177,6 +181,48 @@ impl SessionManagerPanel {
         .detach();
     }
 
+    fn open_new_conversation_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let assistants = self.available_assistants.clone();
+        let Some(default_assistant) = assistants.first().cloned() else {
+            return;
+        };
+        let panel = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let assistant_buttons = assistants.iter().enumerate().map(|(index, assistant)| {
+                let assistant = assistant.clone();
+                let panel = panel.clone();
+                Button::new(("new-conversation-agent", index))
+                    .label(assistant.name.clone())
+                    .ghost()
+                    .small()
+                    .on_click(move |_, window, cx| {
+                        if let Some(panel) = panel.upgrade() {
+                            panel.update(cx, |this, cx| {
+                                this.create_conversation(assistant.clone(), window, cx);
+                            });
+                        }
+                    })
+            });
+            dialog
+                .title("New conversation")
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .child(
+                            gpui::div()
+                                .text_sm()
+                                .child("Choose an agent, then select a workspace folder."),
+                        )
+                        .children(assistant_buttons),
+                )
+                .footer(
+                    DialogFooter::new()
+                        .child(DialogClose::new().child(Button::new("cancel").label("Cancel").outline())),
+                )
+        });
+        let _ = default_assistant;
+    }
+
     fn delete_conversation(&mut self, conversation_id: String, cx: &mut Context<Self>) {
         let Some(store) = AppState::global(cx).conversation_store().cloned() else {
             return;
@@ -262,6 +308,17 @@ impl SessionManagerPanel {
         let selected_id = self.tree_state.read(cx).selected_item().map(|item| item.id.clone());
         let expanded = expanded_tree_items(&self.tree_items);
         let items = build_conversation_tree(&self.state, &self.aionrs_sessions, &expanded);
+        self.agent_icons = self
+            .state
+            .conversations
+            .iter()
+            .filter_map(|conversation| {
+                conversation
+                    .assistant
+                    .as_ref()
+                    .map(|assistant| (conversation.id.clone(), agent_icon(&assistant.backend)))
+            })
+            .collect();
         let selected_item = selected_id
             .as_ref()
             .and_then(|id| find_tree_item(&items, id.as_str()))
@@ -280,6 +337,68 @@ impl SessionManagerPanel {
         }
     }
 
+    fn rename_selected_conversation(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(conversation_id) = self.selected_conversation_id(cx) else {
+            return;
+        };
+        let Some(conversation) = self.state.conversations.iter().find(|item| item.id == conversation_id) else {
+            return;
+        };
+        let Some(store) = AppState::global(cx).conversation_store().cloned() else {
+            return;
+        };
+        let input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx);
+            state.set_value(conversation.name.clone(), window, cx);
+            state
+        });
+        let entity = cx.entity().downgrade();
+        window.open_dialog(cx, move |dialog, window, cx| {
+            input.update(cx, |state, cx| state.focus(window, cx));
+            dialog
+                .title("Rename conversation")
+                .child(Input::new(&input).w_full())
+                .footer(
+                    DialogFooter::new()
+                        .child(DialogClose::new().child(Button::new("cancel").label("Cancel").outline()))
+                        .child(DialogAction::new().child(Button::new("rename").label("Rename").primary())),
+                )
+                .on_ok({
+                    let input = input.clone();
+                    let store = store.clone();
+                    let conversation_id = conversation_id.clone();
+                    let entity = entity.clone();
+                    move |_, _, cx| {
+                        let name = input.read(cx).value().trim().to_owned();
+                        if name.is_empty() {
+                            return false;
+                        }
+                        let conversation_id = conversation_id.clone();
+                        let store = store.clone();
+                        let entity = entity.clone();
+                        cx.spawn(async move |cx| {
+                            let result = store.rename(&conversation_id, name).await;
+                            let _ = cx.update(|cx| {
+                                if let Some(entity) = entity.upgrade() {
+                                    entity.update(cx, |this, cx| {
+                                        if let Err(error) = result {
+                                            this.state.error = Some(format!("Unable to rename conversation: {error}"));
+                                        } else {
+                                            this.state = store.snapshot();
+                                            this.sync_tree(cx);
+                                        }
+                                        cx.notify();
+                                    });
+                                }
+                            });
+                        })
+                        .detach();
+                        true
+                    }
+                })
+        });
+    }
+
     fn selected_conversation_id(&self, cx: &App) -> Option<String> {
         self.tree_state
             .read(cx)
@@ -291,10 +410,12 @@ impl SessionManagerPanel {
     fn render_tree(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let panel = cx.entity();
         let tree_state = self.tree_state.clone();
+        let agent_icons = self.agent_icons.clone();
         tree(&self.tree_state, move |ix, entry, _selected, _window, cx| {
             let item = entry.item().clone();
             let is_conversation = item.id.as_str().starts_with("conversation:");
             let is_saved_session = item.id.as_str().starts_with("aionrs:");
+            let conversation_id = item.id.as_str().strip_prefix("conversation:");
             let icon = if entry.is_folder() {
                 if entry.is_expanded() {
                     IconName::FolderOpen
@@ -304,7 +425,9 @@ impl SessionManagerPanel {
             } else if is_saved_session {
                 IconName::Bot
             } else {
-                IconName::File
+                conversation_id
+                    .and_then(|id| agent_icons.get(id).cloned())
+                    .unwrap_or(IconName::File)
             };
 
             ListItem::new(ix)
@@ -319,7 +442,13 @@ impl SessionManagerPanel {
                         .items_center()
                         .gap_2()
                         .child(Icon::new(icon).size(px(14.)).text_color(cx.theme().muted_foreground))
-                        .child(gpui::div().flex_1().min_w_0().text_ellipsis().child(item.label.clone())),
+                        .child(
+                            gpui::div()
+                                .flex_1()
+                                .min_w_0()
+                                .text_ellipsis()
+                                .child(normalize_title(item.label.as_str())),
+                        ),
                 )
                 .on_click({
                     let panel = panel.clone();
@@ -351,6 +480,7 @@ fn build_conversation_tree(
     expanded: &BTreeMap<String, bool>,
 ) -> Vec<TreeItem> {
     let mut by_workspace = BTreeMap::<String, Vec<TreeItem>>::new();
+    let mut latest = Vec::new();
     for conversation in &state.conversations {
         let workspace = conversation
             .extra
@@ -358,14 +488,18 @@ fn build_conversation_tree(
             .and_then(serde_json::Value::as_str)
             .filter(|value| !value.is_empty())
             .unwrap_or("Other");
-        by_workspace
-            .entry(workspace.to_owned())
-            .or_default()
-            .push(TreeItem::new(
-                format!("conversation:{}", conversation.id),
-                conversation.name.clone(),
-            ));
+        let item = TreeItem::new(
+            format!("conversation:{}", conversation.id),
+            normalize_title(&conversation.name),
+        );
+        if is_temporary_conversation(conversation) {
+            latest.push((conversation.modified_at, item));
+        } else {
+            by_workspace.entry(workspace.to_owned()).or_default().push(item);
+        }
     }
+
+    latest.sort_by_key(|item| std::cmp::Reverse(item.0));
 
     let mut items = by_workspace
         .into_iter()
@@ -376,6 +510,14 @@ fn build_conversation_tree(
                 .children(conversations)
         })
         .collect::<Vec<_>>();
+
+    if !latest.is_empty() {
+        items.push(
+            TreeItem::new("latest-conversations", "Latest conversations")
+                .expanded(expanded.get("latest-conversations").copied().unwrap_or(true))
+                .children(latest.into_iter().map(|(_, item)| item)),
+        );
+    }
 
     if !aionrs_sessions.is_empty() {
         items.push(
@@ -394,6 +536,37 @@ fn build_conversation_tree(
         );
     }
     items
+}
+
+fn normalize_title(value: &str) -> String {
+    value.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_temporary_conversation(conversation: &ConversationResponse) -> bool {
+    conversation
+        .extra
+        .get("is_temporary_workspace")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or_else(|| {
+            conversation
+                .extra
+                .get("workspace")
+                .and_then(serde_json::Value::as_str)
+                .map(|workspace| {
+                    let lower = workspace.to_ascii_lowercase();
+                    lower.contains("aionrs-temp") || lower.contains("snow-temp")
+                })
+                .unwrap_or(false)
+        })
+}
+
+fn agent_icon(backend: &str) -> IconName {
+    match backend.to_ascii_lowercase().as_str() {
+        value if value.contains("codex") => IconName::SquareTerminal,
+        value if value.contains("claude") => IconName::Bot,
+        value if value.contains("aion") => IconName::Bot,
+        _ => IconName::Bot,
+    }
 }
 
 fn workspace_label(workspace: &str) -> String {
@@ -452,6 +625,7 @@ impl Render for SessionManagerPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let can_delete = self.selected_conversation_id(cx).is_some();
+        let can_rename = can_delete;
         let tree_is_empty = self.state.conversations.is_empty() && self.aionrs_sessions.is_empty();
         let tree_is_loading = self.state.is_loading || self.loading_aionrs_sessions;
         v_flex()
@@ -475,6 +649,31 @@ impl Render for SessionManagerPanel {
                     .child(
                         h_flex()
                             .gap_1()
+                            .child(
+                                Button::new("new-conversation")
+                                    .label("New conversation")
+                                    .ghost()
+                                    .xsmall()
+                                    .disabled(self.available_assistants.is_empty())
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.open_new_conversation_dialog(window, cx)
+                                        }),
+                                    ),
+                            )
+                            .child(
+                                Button::new("rename-selected-conversation")
+                                    .icon(Icon::new(IconName::Replace))
+                                    .ghost()
+                                    .xsmall()
+                                    .disabled(!can_rename)
+                                    .tooltip("Rename selected conversation")
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| {
+                                            this.rename_selected_conversation(window, cx)
+                                        }),
+                                    ),
+                            )
                             .child(
                                 Button::new("delete-selected-conversation")
                                     .icon(Icon::new(IconName::Delete))
@@ -510,26 +709,13 @@ impl Render for SessionManagerPanel {
                     .px_2()
                     .py_2()
                     .gap_1()
-                    .child(
-                        gpui::div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(if self.loading_assistants {
-                                "Loading assistants..."
-                            } else {
-                                "New conversation"
-                            }),
-                    )
-                    .children(self.available_assistants.iter().enumerate().map(|(index, assistant)| {
-                        let assistant = assistant.clone();
-                        Button::new(("new-conversation", index))
-                            .label(assistant.name.clone())
-                            .ghost()
-                            .xsmall()
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.create_conversation(assistant.clone(), window, cx)
-                            }))
-                    })),
+                    .child(gpui::div().text_xs().text_color(theme.muted_foreground).child(
+                        if self.loading_assistants {
+                            "Loading assistants..."
+                        } else {
+                            "Workspace and agent are selected when creating a conversation"
+                        },
+                    )),
             )
             .child(
                 gpui::div()
@@ -581,6 +767,10 @@ mod tests {
             r#type: json!("acp"),
             extra: json!({ "workspace": workspace }),
             prompt_capability: None,
+            name_source: None,
+            assistant: None,
+            created_at: 0,
+            modified_at: 0,
         }
     }
 
@@ -628,5 +818,29 @@ mod tests {
         let refreshed = build_conversation_tree(&state, &[], &expanded);
 
         assert!(!refreshed[0].is_expanded());
+    }
+
+    #[test]
+    fn normalizes_multiline_titles_without_changing_message_content() {
+        assert_eq!(normalize_title("Fix\nlogin\tbug"), "Fix login bug");
+    }
+
+    #[test]
+    fn sorts_temporary_conversations_into_latest_group() {
+        let mut older = conversation("old", "Older", "/tmp/aionrs-temp-old");
+        older.modified_at = 10;
+        let mut newer = conversation("new", "Newer", "/tmp/snow-temp-new");
+        newer.modified_at = 20;
+        let state = ConversationState {
+            conversations: vec![older, newer],
+            ..Default::default()
+        };
+
+        let items = build_conversation_tree(&state, &[], &BTreeMap::new());
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].id.as_str(), "latest-conversations");
+        assert_eq!(items[0].children[0].label.as_str(), "Newer");
+        assert_eq!(items[0].children[1].label.as_str(), "Older");
     }
 }

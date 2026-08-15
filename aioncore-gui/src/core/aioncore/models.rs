@@ -48,6 +48,8 @@ pub struct ConversationResponse {
     pub id: String,
     pub name: String,
     #[serde(default)]
+    pub name_source: Option<String>,
+    #[serde(default)]
     pub pinned: bool,
     #[serde(default)]
     pub status: Value,
@@ -59,6 +61,12 @@ pub struct ConversationResponse {
     pub extra: Value,
     #[serde(default)]
     pub prompt_capability: Option<PromptCapabilityView>,
+    #[serde(default)]
+    pub assistant: Option<AssistantIdentityResponse>,
+    #[serde(default)]
+    pub created_at: i64,
+    #[serde(default)]
+    pub modified_at: i64,
 }
 
 pub type ConversationListResponse = PaginatedResult<ConversationResponse>;
@@ -105,6 +113,17 @@ pub struct CreateConversationRequest {
     pub name: Option<String>,
     pub assistant: AssistantConversationRequest,
     pub extra: Value,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct AssistantIdentityResponse {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub avatar: String,
+    #[serde(default)]
+    pub backend: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

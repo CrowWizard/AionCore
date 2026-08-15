@@ -83,6 +83,7 @@ pub struct ChatInputBox {
     model_select: Option<Entity<SelectState<Vec<ModelSelectItem>>>>,
     agent_select: Option<Entity<SelectState<Vec<AgentItem>>>>,
     agent_status_text: Option<String>,
+    agent_icon: Option<IconName>,
     pasted_images: Vec<ClipboardImage>,     // Temporary PNG attachment files.
     code_selections: Vec<AddCodeSelection>, // Code selections from editor
     selected_files: Vec<String>,            // Selected file paths from file picker
@@ -122,6 +123,7 @@ impl ChatInputBox {
             model_select: None,
             agent_select: None,
             agent_status_text: None,
+            agent_icon: None,
             pasted_images: Vec::new(),
             code_selections: Vec::new(),
             selected_files: Vec::new(),
@@ -187,6 +189,11 @@ impl ChatInputBox {
     /// Set the agent status text shown next to the agent select
     pub fn agent_status_text(mut self, text: impl Into<String>) -> Self {
         self.agent_status_text = Some(text.into());
+        self
+    }
+
+    pub fn agent_icon(mut self, icon: IconName) -> Self {
+        self.agent_icon = Some(icon);
         self
     }
 
@@ -632,6 +639,9 @@ impl RenderOnce for ChatInputBox {
                                     })
                                     .when_some(self.agent_status_text.clone(), |this, text| {
                                         this.child(div().text_xs().text_color(theme.muted_foreground).child(text))
+                                    })
+                                    .when_some(self.agent_icon, |this, icon| {
+                                        this.child(Icon::new(icon).size(px(14.)).text_color(theme.accent))
                                     })
                                     .when_some(self.mode_select, |this, mode_select| {
                                         this.child(Select::new(&mode_select).small().appearance(false))

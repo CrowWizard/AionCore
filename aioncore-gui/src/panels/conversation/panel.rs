@@ -59,9 +59,23 @@ pub struct ConversationPanel {
     workspace_id: Option<String>,
     workspace_name: Option<String>,
     working_directory: Option<String>,
+    agent_icon: Option<IconName>,
 }
 
 const AUTO_SCROLL_THRESHOLD_PX: f32 = 120.0;
+
+fn selected_agent_icon(state: &crate::core::aioncore::ConversationState) -> Option<IconName> {
+    state
+        .selected_conversation
+        .as_ref()
+        .and_then(|conversation| conversation.assistant.as_ref())
+        .map(|assistant| match assistant.backend.to_ascii_lowercase().as_str() {
+            value if value.contains("codex") => IconName::SquareTerminal,
+            value if value.contains("claude") => IconName::Bot,
+            value if value.contains("aion") => IconName::Bot,
+            _ => IconName::Bot,
+        })
+}
 
 #[derive(Clone)]
 struct AskQuestion {
@@ -240,6 +254,7 @@ impl ConversationPanel {
             workspace_id: None,
             workspace_name: None,
             working_directory: None,
+            agent_icon: None,
         }
     }
 
@@ -298,6 +313,7 @@ impl ConversationPanel {
                             .as_ref()
                             .and_then(|conversation| conversation.prompt_capability.as_ref())
                             .map(|capability| (capability.image, capability.audio));
+                        this.agent_icon = selected_agent_icon(&store.snapshot());
                         this.active_turn_id = message_state.active_turn_id;
                         this.scroll_handle.scroll_to_bottom();
                         cx.notify();
@@ -333,7 +349,8 @@ impl ConversationPanel {
                         this.history_messages = state.messages;
                         this.confirmations = store.snapshot().confirmations;
                         this.active_turn_id = state.active_turn_id;
-                        this.session_status = Self::runtime_status(state.runtime.as_ref());
+                                        this.session_status = Self::runtime_status(state.runtime.as_ref());
+                                        this.agent_icon = selected_agent_icon(&store.snapshot());
                                         this.scroll_handle.scroll_to_bottom();
                                         cx.notify();
                                     }
@@ -882,6 +899,7 @@ impl Render for ConversationPanel {
                             .pasted_images(self.pasted_images.clone())
                             .code_selections(self.code_selections.clone())
                             .session_status(self.session_status.as_ref().map(|info| info.status.clone()))
+                            .agent_icon(self.agent_icon.clone().unwrap_or(IconName::Bot))
                             .disabled(is_disabled)
                             .on_paste(move |window, cx| {
                                 entity.update(cx, |this, cx| {
