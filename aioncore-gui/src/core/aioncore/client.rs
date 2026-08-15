@@ -51,13 +51,30 @@ pub struct CoreClient {
 
 impl CoreClient {
     pub fn new(backend_url: &str) -> Result<Self, CoreClientError> {
+        Self::new_with_proxy(backend_url, None, None, None)
+    }
+
+    pub fn new_with_proxy(
+        backend_url: &str,
+        http_proxy_url: Option<&str>,
+        https_proxy_url: Option<&str>,
+        all_proxy_url: Option<&str>,
+    ) -> Result<Self, CoreClientError> {
         let backend_url = Url::parse(backend_url).map_err(|_| CoreClientError::InvalidBackendUrl)?;
         let (status, _) = watch::channel(ConnectionStatus::Disconnected);
-        let http = reqwest::Client::builder()
+        let mut http = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            .user_agent("aioncore-gui")
-            .build()
-            .map_err(|_| CoreClientError::Transport)?;
+            .user_agent("aioncore-gui");
+        if let Some(url) = http_proxy_url.filter(|url| !url.trim().is_empty()) {
+            http = http.proxy(reqwest::Proxy::http(url.trim()).map_err(|_| CoreClientError::InvalidBackendUrl)?);
+        }
+        if let Some(url) = https_proxy_url.filter(|url| !url.trim().is_empty()) {
+            http = http.proxy(reqwest::Proxy::https(url.trim()).map_err(|_| CoreClientError::InvalidBackendUrl)?);
+        }
+        if let Some(url) = all_proxy_url.filter(|url| !url.trim().is_empty()) {
+            http = http.proxy(reqwest::Proxy::all(url.trim()).map_err(|_| CoreClientError::InvalidBackendUrl)?);
+        }
+        let http = http.build().map_err(|_| CoreClientError::Transport)?;
 
         Ok(Self {
             backend_url,
@@ -298,6 +315,14 @@ mod tests {
     fn rejects_invalid_backend_url() {
         assert!(matches!(
             CoreClient::new("not a URL"),
+            Err(CoreClientError::InvalidBackendUrl)
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_proxy_url() {
+        assert!(matches!(
+            CoreClient::new_with_proxy("http://127.0.0.1:25808", Some("not a URL"), None, None),
             Err(CoreClientError::InvalidBackendUrl)
         ));
     }

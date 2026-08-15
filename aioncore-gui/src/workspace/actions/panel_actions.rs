@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::{
     AppState, ConversationPanel, OpenSessionManager, PanelAction, SelectProjectWorkspace, SessionManagerPanel,
-    ToggleDockToggleButton, ToggleFileManager, TogglePanelVisible,
+    SettingsPanel, ToggleDockToggleButton, ToggleFileManager, TogglePanelVisible,
     app::actions::{PanelCommand, PanelKind, Submit},
     panels::{
         DockPanel,
@@ -499,8 +499,49 @@ impl DockWorkspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let workspace = Self::find_focused_tab_panel(self.dock_area.read(cx).center(), window, cx)
+            .or_else(|| Self::find_first_tab_panel(self.dock_area.read(cx).center(), cx))
+            .and_then(|(_, panel)| panel.view().downcast::<DockPanelContainer>().ok())
+            .and_then(|container| container.read(cx).conversation_workspace(cx));
+
+        if let Some(workspace) = workspace {
+            self.dock_area.update(cx, |dock_area, cx| {
+                if let Some(right_dock) = dock_area.right_dock().cloned() {
+                    Self::switch_code_editor_in_item(&right_dock.read(cx).panel().clone(), workspace, cx);
+                }
+            });
+        }
+
         self.dock_area.update(cx, |dock_area, cx| {
             dock_area.toggle_dock(DockPlacement::Right, window, cx);
+        });
+    }
+
+    fn switch_code_editor_in_item(item: &DockItem, workspace: std::path::PathBuf, cx: &mut App) {
+        match item {
+            DockItem::Tabs { items, .. } => {
+                for panel in items {
+                    Self::switch_code_editor_panel(panel, workspace.clone(), cx);
+                }
+            }
+            DockItem::Split { items, .. } => {
+                for panel in items {
+                    Self::switch_code_editor_in_item(panel, workspace.clone(), cx);
+                }
+            }
+            DockItem::Panel { view, .. } => {
+                Self::switch_code_editor_panel(view, workspace, cx);
+            }
+            DockItem::Tiles { .. } => {}
+        }
+    }
+
+    fn switch_code_editor_panel(panel: &Arc<dyn PanelView>, workspace: std::path::PathBuf, cx: &mut App) {
+        let Ok(container) = panel.view().downcast::<DockPanelContainer>() else {
+            return;
+        };
+        container.update(cx, |container, cx| {
+            container.switch_code_editor_workspace(workspace, cx);
         });
     }
 
@@ -529,10 +570,22 @@ impl DockWorkspace {
     pub(in crate::workspace) fn on_action_open_setting_panel(
         &mut self,
         _action: &OpenSettings,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) {
-        log::warn!("The legacy settings panel is unavailable until its AionCore-only replacement is complete");
+        if Self::activate_panel_by_klass(
+            &self.dock_area.read(cx).center().clone(),
+            SettingsPanel::klass(),
+            window,
+            cx,
+        ) {
+            return;
+        }
+
+        let panel = Arc::new(DockPanelContainer::panel::<SettingsPanel>(window, cx));
+        self.dock_area.update(cx, |dock_area, cx| {
+            dock_area.add_panel(panel, DockPlacement::Center, None, window, cx);
+        });
     }
 
     pub(in crate::workspace) fn on_action_open_session_manager(

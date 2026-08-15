@@ -24,6 +24,14 @@ pub struct AppSettings {
     pub resettable: bool,
     pub group_variant: SharedString,
     pub size: SharedString,
+    #[serde(default)]
+    pub proxy_enabled: bool,
+    #[serde(default)]
+    pub http_proxy_url: String,
+    #[serde(default)]
+    pub https_proxy_url: String,
+    #[serde(default)]
+    pub all_proxy_url: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +60,10 @@ impl Default for AppSettings {
             resettable: true,
             group_variant: "Fill".into(),
             size: "Small".into(),
+            proxy_enabled: false,
+            http_proxy_url: String::new(),
+            https_proxy_url: String::new(),
+            all_proxy_url: String::new(),
         }
     }
 }

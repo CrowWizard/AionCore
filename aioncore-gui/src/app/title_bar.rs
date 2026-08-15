@@ -50,17 +50,13 @@ impl AppTitleBar {
         self.child = Rc::new(move |window, cx| f(window, cx).into_any_element());
         self
     }
-
-    fn on_action_open_settings(&mut self, _: &OpenSettings, _window: &mut Window, _cx: &mut Context<Self>) {
-        // SettingsWindow::open(window, cx).detach();
-    }
 }
 
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let notifications_count = window.notifications(cx).len();
 
-        div().on_action(cx.listener(Self::on_action_open_settings)).child(
+        div().child(
             TitleBar::new()
                 // left side
                 .child(

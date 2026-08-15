@@ -223,6 +223,10 @@ impl DockPanelContainer {
         view
     }
 
+    pub fn set_closable(&mut self, closable: bool) {
+        self.closable = closable;
+    }
+
     /// Create a panel for a specific session (currently only supports ConversationPanel)
     /// This will load the conversation hiagent_studio for that session
     pub fn panel_for_session(session_id: String, window: &mut Window, cx: &mut App) -> Entity<Self> {
@@ -340,6 +344,29 @@ impl DockPanelContainer {
         };
 
         terminal.update(cx, |terminal, cx| terminal.switch_workspace(path, window, cx));
+    }
+
+    pub fn switch_code_editor_workspace(&mut self, path: std::path::PathBuf, cx: &mut Context<Self>) {
+        if self.agent_studio_klass.as_deref() != Some("CodeEditorPanel") {
+            return;
+        }
+        let Some(agent_studio) = self.agent_studio.clone() else {
+            return;
+        };
+        let Ok(editor) = agent_studio.downcast::<CodeEditorPanel>() else {
+            return;
+        };
+
+        editor.update(cx, |editor, cx| editor.switch_workspace(path, cx));
+    }
+
+    pub fn conversation_workspace(&self, cx: &App) -> Option<std::path::PathBuf> {
+        if self.agent_studio_klass.as_deref() != Some("ConversationPanel") {
+            return None;
+        }
+        let agent_studio = self.agent_studio.clone()?;
+        let conversation = agent_studio.downcast::<ConversationPanel>().ok()?;
+        conversation.read(cx).effective_workspace()
     }
 
     pub fn panel_for_code_editor(

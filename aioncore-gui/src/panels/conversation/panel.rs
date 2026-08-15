@@ -94,6 +94,13 @@ fn normalized_tab_title(value: &str) -> String {
     }
 }
 
+fn workspace_from_extra(extra: &serde_json::Value) -> Option<std::path::PathBuf> {
+    extra
+        .get("workspace")
+        .and_then(serde_json::Value::as_str)
+        .map(std::path::PathBuf::from)
+}
+
 #[derive(Clone)]
 struct AskQuestion {
     text: String,
@@ -255,6 +262,13 @@ impl ConversationPanel {
         self.working_directory.clone()
     }
 
+    pub fn effective_workspace(&self) -> Option<std::path::PathBuf> {
+        self.working_directory
+            .as_deref()
+            .map(std::path::PathBuf::from)
+            .or_else(|| self.draft_workspace.clone())
+    }
+
     fn new(window: &mut Window, cx: &mut App) -> Self {
         log::info!("🔧 Initializing ConversationPanel (new)");
         Self::new_internal(None, window, cx)
@@ -312,6 +326,7 @@ impl ConversationPanel {
             InputState::new(window, cx)
                 .auto_grow(1, 3)
                 .soft_wrap(true)
+                .submit_on_enter(true)
                 .placeholder("Type a message...")
         })
     }
@@ -379,6 +394,11 @@ impl ConversationPanel {
                             .selected_conversation
                             .as_ref()
                             .map(|conversation| normalized_tab_title(&conversation.name));
+                        this.working_directory = snapshot
+                            .selected_conversation
+                            .as_ref()
+                            .and_then(|conversation| workspace_from_extra(&conversation.extra))
+                            .and_then(|workspace| workspace.into_os_string().into_string().ok());
                         this.active_turn_id = message_state.active_turn_id;
                         this.scroll_handle.scroll_to_bottom();
                         cx.notify();
@@ -969,12 +989,26 @@ impl ConversationPanel {
 
 #[cfg(test)]
 mod tests {
-    use super::normalized_tab_title;
+    use super::{normalized_tab_title, workspace_from_extra};
+    use std::path::PathBuf;
 
     #[test]
     fn tab_title_is_single_line_and_truncated() {
         let title = normalized_tab_title("A\nconversation with a very long generated title");
         assert_eq!(title, "A conversation with a very long ...");
+    }
+
+    #[test]
+    fn workspace_path_comes_from_conversation_extra() {
+        let workspace = workspace_from_extra(&serde_json::json!({ "workspace": "/work/project" }));
+
+        assert_eq!(workspace, Some(PathBuf::from("/work/project")));
+    }
+
+    #[test]
+    fn workspace_path_ignores_missing_or_invalid_extra() {
+        assert_eq!(workspace_from_extra(&serde_json::json!({})), None);
+        assert_eq!(workspace_from_extra(&serde_json::json!({ "workspace": 42 })), None);
     }
 }
 

@@ -7,6 +7,8 @@ pub mod conversation;
 pub mod dock_panel;
 mod project_panel;
 mod session_manager;
+#[path = "aioncore_settings.rs"]
+mod settings_panel;
 mod team_panel;
 mod terminal_panel;
 
@@ -15,5 +17,6 @@ pub use conversation::ConversationPanel;
 pub use dock_panel::{DockPanel, DockPanelContainer, DockPanelState};
 pub use project_panel::ProjectPanel;
 pub use session_manager::SessionManagerPanel;
+pub use settings_panel::SettingsPanel;
 pub use team_panel::TeamPanel;
 pub use terminal_panel::TerminalPanel;

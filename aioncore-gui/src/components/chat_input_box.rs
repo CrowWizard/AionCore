@@ -77,7 +77,7 @@ pub struct ChatInputBox {
     id: ElementId,
     input_state: Entity<InputState>,
     title: Option<String>,
-    on_send: Option<Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>>,
+    on_send: Option<Rc<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>>,
     on_cancel: Option<Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static>>,
     mode_select: Option<Entity<SelectState<Vec<ModeSelectItem>>>>,
     model_select: Option<Entity<SelectState<Vec<ModelSelectItem>>>>,
@@ -157,7 +157,7 @@ impl ChatInputBox {
     where
         F: Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
     {
-        self.on_send = Some(Box::new(callback));
+        self.on_send = Some(Rc::new(callback));
         self
     }
 
@@ -610,6 +610,12 @@ impl RenderOnce for ChatInputBox {
                                         }
                                     }
                                 });
+
+                            if let Some(handler) = on_send.clone() {
+                                input = input.on_submit(move |window, cx| {
+                                    handler(&gpui::ClickEvent::default(), window, cx);
+                                });
+                            }
 
                             if self.on_command_select.is_some() || self.on_file_select.is_some() {
                                 let on_command_select = self.on_command_select;

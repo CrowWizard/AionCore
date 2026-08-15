@@ -13,6 +13,8 @@ pub struct SettingsState {
     pub settings: Option<SystemSettingsResponse>,
     pub skills: Vec<SkillListItemResponse>,
     pub assistants: Vec<AssistantResponse>,
+    pub providers: Vec<Value>,
+    pub mcp_servers: Vec<Value>,
     pub is_loading: bool,
     pub error: Option<String>,
 }
@@ -44,10 +46,16 @@ impl SettingsStore {
                 self.client.request_json(Method::GET, "/api/skills", None).await?;
             let assistants: ApiResponse<Vec<AssistantResponse>> =
                 self.client.request_json(Method::GET, "/api/assistants", None).await?;
+            let providers: ApiResponse<Vec<Value>> =
+                self.client.request_json(Method::GET, "/api/providers", None).await?;
+            let mcp_servers: ApiResponse<Vec<Value>> =
+                self.client.request_json(Method::GET, "/api/mcp/servers", None).await?;
             Ok::<_, CoreClientError>((
                 settings.data.ok_or(CoreClientError::Decode)?,
                 skills.data.ok_or(CoreClientError::Decode)?,
                 assistants.data.ok_or(CoreClientError::Decode)?,
+                providers.data.ok_or(CoreClientError::Decode)?,
+                mcp_servers.data.ok_or(CoreClientError::Decode)?,
             ))
         }
         .await;
@@ -55,10 +63,12 @@ impl SettingsStore {
         let mut state = self.state.write().expect("settings state lock poisoned");
         state.is_loading = false;
         match result {
-            Ok((settings, skills, assistants)) => {
+            Ok((settings, skills, assistants, providers, mcp_servers)) => {
                 state.settings = Some(settings);
                 state.skills = skills;
                 state.assistants = assistants;
+                state.providers = providers;
+                state.mcp_servers = mcp_servers;
                 state.error = None;
                 Ok(())
             }

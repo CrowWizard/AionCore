@@ -68,6 +68,7 @@ pub struct InputSuggestionState<T: InputSuggestionItem + 'static> {
     input_bounds: Option<Bounds<Pixels>>,
     on_query_change: Option<Rc<dyn Fn(&SharedString, &mut Window, &mut App)>>,
     on_confirm: Option<Rc<dyn Fn(&T, &mut Window, &mut App)>>,
+    on_submit: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     on_select_change: Option<Rc<dyn Fn(Option<usize>, &mut Window, &mut App)>>,
     _subscriptions: Vec<Subscription>,
@@ -113,6 +114,7 @@ impl<T: InputSuggestionItem + 'static> InputSuggestionState<T> {
             input_bounds: None,
             on_query_change: None,
             on_confirm: None,
+            on_submit: None,
             on_open_change: None,
             on_select_change: None,
             _subscriptions,
@@ -172,11 +174,13 @@ impl<T: InputSuggestionItem + 'static> InputSuggestionState<T> {
         &mut self,
         on_query_change: Option<Rc<dyn Fn(&SharedString, &mut Window, &mut App)>>,
         on_confirm: Option<Rc<dyn Fn(&T, &mut Window, &mut App)>>,
+        on_submit: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
         on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
         on_select_change: Option<Rc<dyn Fn(Option<usize>, &mut Window, &mut App)>>,
     ) {
         self.on_query_change = on_query_change;
         self.on_confirm = on_confirm;
+        self.on_submit = on_submit;
         self.on_open_change = on_open_change;
         self.on_select_change = on_select_change;
     }
@@ -216,6 +220,12 @@ impl<T: InputSuggestionItem + 'static> InputSuggestionState<T> {
     }
 
     fn handle_keystroke(&mut self, event: &KeystrokeEvent, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        if event.keystroke.key == "enter" && event.keystroke.modifiers.control {
+            self.input_state.update(cx, |state, cx| {
+                state.insert("\n", window, cx);
+            });
+            return true;
+        }
         if !self.open || !self.enabled {
             return false;
         }
@@ -267,7 +277,13 @@ impl<T: InputSuggestionItem + 'static> InputSuggestionState<T> {
                 cx.emit(InputSuggestionEvent::Blur);
                 cx.notify();
             }
-            InputEvent::PressEnter { .. } => {}
+            InputEvent::PressEnter { secondary, shift } => {
+                if !secondary && !shift {
+                    if let Some(callback) = self.on_submit.as_ref() {
+                        callback(window, cx);
+                    }
+                }
+            }
         }
     }
 
@@ -367,6 +383,7 @@ pub struct InputSuggestion<T: InputSuggestionItem + 'static> {
     apply_on_confirm: bool,
     on_query_change: Option<Rc<dyn Fn(&SharedString, &mut Window, &mut App)>>,
     on_confirm: Option<Rc<dyn Fn(&T, &mut Window, &mut App)>>,
+    on_submit: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
     on_select_change: Option<Rc<dyn Fn(Option<usize>, &mut Window, &mut App)>>,
     input_builder: Option<Rc<dyn Fn(&Entity<InputState>) -> Input>>,
@@ -390,6 +407,7 @@ impl<T: InputSuggestionItem + 'static> InputSuggestion<T> {
             apply_on_confirm: true,
             on_query_change: None,
             on_confirm: None,
+            on_submit: None,
             on_open_change: None,
             on_select_change: None,
             input_builder: None,
@@ -464,6 +482,14 @@ impl<T: InputSuggestionItem + 'static> InputSuggestion<T> {
         self
     }
 
+    pub fn on_submit<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(&mut Window, &mut App) + 'static,
+    {
+        self.on_submit = Some(Rc::new(callback));
+        self
+    }
+
     pub fn on_open_change<F>(mut self, callback: F) -> Self
     where
         F: Fn(&bool, &mut Window, &mut App) + 'static,
@@ -531,6 +557,7 @@ impl<T: InputSuggestionItem + 'static> RenderOnce for InputSuggestion<T> {
         let enabled = self.enabled;
         let on_query_change = self.on_query_change.clone();
         let on_confirm = self.on_confirm.clone();
+        let on_submit = self.on_submit.clone();
         let on_open_change = self.on_open_change.clone();
         let on_select_change = self.on_select_change.clone();
         let clear_on_confirm = self.clear_on_confirm;
@@ -543,7 +570,7 @@ impl<T: InputSuggestionItem + 'static> RenderOnce for InputSuggestion<T> {
             if let Some(enabled) = enabled {
                 state.set_enabled(enabled, window, cx);
             }
-            state.set_callbacks(on_query_change, on_confirm, on_open_change, on_select_change);
+            state.set_callbacks(on_query_change, on_confirm, on_submit, on_open_change, on_select_change);
             state.set_clear_on_confirm(clear_on_confirm);
             state.set_apply_on_confirm(apply_on_confirm);
         });

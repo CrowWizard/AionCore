@@ -178,6 +178,17 @@ impl CodeEditorPanel {
         self.working_directory.clone()
     }
 
+    pub fn switch_workspace(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if !path.is_dir() || self.working_directory == path {
+            return;
+        }
+
+        self.working_directory = path.clone();
+        self.files_loaded = true;
+        Self::load_files(self.tree_state.clone(), path, cx);
+        cx.notify();
+    }
+
     fn go_to_line(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         let editor = self.editor.clone();
         let input_state = self.go_to_line_state.clone();

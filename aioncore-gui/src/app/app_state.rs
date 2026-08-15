@@ -75,8 +75,19 @@ impl AppState {
         cx.global_mut::<Self>()
     }
 
-    pub fn connect_core(&mut self, backend_url: &str) -> Result<(), crate::core::aioncore::CoreClientError> {
-        let client = Arc::new(CoreClient::new(backend_url)?);
+    pub fn connect_core(
+        &mut self,
+        backend_url: &str,
+        http_proxy_url: Option<&str>,
+        https_proxy_url: Option<&str>,
+        all_proxy_url: Option<&str>,
+    ) -> Result<(), crate::core::aioncore::CoreClientError> {
+        let client = Arc::new(CoreClient::new_with_proxy(
+            backend_url,
+            http_proxy_url,
+            https_proxy_url,
+            all_proxy_url,
+        )?);
         let connection = client.connect();
         self.conversation_store = Some(ConversationStore::new(client.clone()));
         self.settings_store = Some(SettingsStore::new(client.clone()));

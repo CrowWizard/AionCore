@@ -9,7 +9,8 @@ use std::{sync::Arc, time::Duration};
 const EXCLUDED_PANELS: &[&str] = &["ToolCallDetailPanel"];
 
 use crate::{
-    AppSettings, AppState, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel,
+    AppSettings, AppState, AppTitleBar, ConversationPanel, ProjectPanel, SessionManagerPanel, SettingsPanel, TeamPanel,
+    TerminalPanel,
     core::updater::{UpdateCheckResult, UpdateManager},
     panels::dock_panel::DockPanelContainer,
 };
@@ -22,7 +23,7 @@ mod startup;
 
 const MAIN_DOCK_AREA: DockAreaTab = DockAreaTab {
     id: "main-dock",
-    version: 7,
+    version: 8,
 };
 
 pub struct DockWorkspace {
@@ -387,12 +388,10 @@ impl DockWorkspace {
     }
 
     fn init_default_layout(dock_area: &WeakEntity<DockArea>, window: &mut Window, cx: &mut App) -> DockItem {
-        DockItem::tabs(
-            vec![Arc::new(DockPanelContainer::panel::<ConversationPanel>(window, cx))],
-            &dock_area,
-            window,
-            cx,
-        )
+        let initial_conversation = DockPanelContainer::panel::<ConversationPanel>(window, cx);
+        initial_conversation.update(cx, |panel, _| panel.set_closable(false));
+
+        DockItem::tabs(vec![Arc::new(initial_conversation)], &dock_area, window, cx)
     }
 
     pub fn new_local(cx: &mut App) -> Task<anyhow::Result<WindowHandle<Root>>> {

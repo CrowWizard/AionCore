@@ -16,7 +16,9 @@ pub use assets::Assets;
 
 // Re-export from panels module
 use crate::panels::{DockPanelContainer, DockPanelState};
-pub use panels::{AppSettings, ConversationPanel, ProjectPanel, SessionManagerPanel, TeamPanel, TerminalPanel};
+pub use panels::{
+    AppSettings, ConversationPanel, ProjectPanel, SessionManagerPanel, SettingsPanel, TeamPanel, TerminalPanel,
+};
 
 // Re-export from core module
 pub use core::event_bus::{AppEvent, CodeSelectionEvent, EventHub, WorkspaceUpdateEvent};
