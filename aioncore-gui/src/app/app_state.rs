@@ -80,8 +80,6 @@ impl AppState {
         let connection = client.connect();
         self.conversation_store = Some(ConversationStore::new(client.clone()));
         self.settings_store = Some(SettingsStore::new(client.clone()));
-        // Project Explorer is optional in older compatible backends. Avoid probing
-        // its routes until the user explicitly opens the panel.
         self.project_store = Some(ProjectStore::new(client.clone()));
         self.team_store = Some(TeamStore::new(client.clone()));
         self.core_client = Some(client);
