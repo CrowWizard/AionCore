@@ -15,9 +15,9 @@ pub use conversation_store::{ConversationEventAction, ConversationState, Convers
 pub use events::{CoreEvent, CoreEventHub};
 pub use message_reducer::{MessageStreamReducer, MessageStreamState, MessageView};
 pub use models::{
-    AionrsSessionResponse, AskAnswerRequest, AskQuestionAnswer, AssistantResponse, CancelConversationResponse,
-    ChatFileRef, Confirmation, ConversationRuntimeSummary, HealthResponse, MessageResponse, SendMessageResponse,
-    WebSocketMessage,
+    AcpConfigOption, AionrsSessionResponse, AskAnswerRequest, AskQuestionAnswer, AssistantResponse,
+    CancelConversationResponse, ChatFileRef, Confirmation, ConversationRuntimeSummary, HealthResponse, MessageResponse,
+    SendMessageResponse, SlashCommand, WebSocketMessage,
 };
 pub use project_store::{ProjectState, ProjectStore};
 pub use settings_store::{SettingsState, SettingsStore};

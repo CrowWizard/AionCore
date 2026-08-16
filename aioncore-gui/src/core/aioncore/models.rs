@@ -179,6 +179,56 @@ pub struct ConversationRuntimeSummary {
     pub turn_id: Option<String>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct AcpConfigSelectOption {
+    pub value: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct AcpConfigOption {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(rename = "type")]
+    pub option_type: String,
+    #[serde(default)]
+    pub current_value: Option<String>,
+    #[serde(default)]
+    pub options: Vec<AcpConfigSelectOption>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+pub struct EnsureConversationRuntimeResponse {
+    pub recovered: bool,
+    pub config_options: Vec<AcpConfigOption>,
+    pub runtime: ConversationRuntimeSummary,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SetConfigOptionResponse {
+    pub confirmation: String,
+    #[serde(default)]
+    pub config_options: Option<Vec<AcpConfigOption>>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct SlashCommand {
+    pub command: String,
+    pub description: String,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq)]
 pub struct Confirmation {
     pub id: String,

@@ -9,6 +9,7 @@ use gpui_component::{
     h_flex,
     input::InputState,
     menu::{DropdownMenu as _, PopupMenuItem},
+    select::SelectState,
     skeleton::Skeleton,
     spinner::Spinner,
     v_flex,
@@ -16,13 +17,18 @@ use gpui_component::{
 
 // Use the published ACP schema crate
 use crate::core::aioncore::{
-    AskAnswerRequest, AskQuestionAnswer, AssistantResponse, Confirmation, ConversationRuntimeSummary, MessageView,
+    AcpConfigOption, AskAnswerRequest, AskQuestionAnswer, AssistantResponse, Confirmation, ConversationRuntimeSummary,
+    MessageView, SlashCommand,
 };
 use crate::utils::clipboard::ClipboardImage;
 use crate::{
-    AppState, ChatInputBox, app::actions::AddCodeSelection, components::render_message, core::services::SessionStatus,
+    AppState, ChatInputBox,
+    app::actions::AddCodeSelection,
+    components::{ModeSelectItem, ModelSelectItem, render_message},
+    core::services::SessionStatus,
     panels::dock_panel::DockPanel,
 };
+use agent_client_protocol::schema::AvailableCommand;
 use chrono::{DateTime, Utc};
 use rust_i18n::t;
 
@@ -67,6 +73,9 @@ pub struct ConversationPanel {
     draft_assistants: Vec<AssistantResponse>,
     draft_assistant_id: Option<String>,
     draft_workspace: Option<std::path::PathBuf>,
+    config_options: Vec<AcpConfigOption>,
+    pending_config_options: std::collections::HashSet<String>,
+    slash_commands: Vec<SlashCommand>,
 }
 
 const AUTO_SCROLL_THRESHOLD_PX: f32 = 120.0;
@@ -231,6 +240,7 @@ impl ConversationPanel {
 
         // Load historical messages before subscribing to new updates
         Self::load_history_for_session(&entity, session_id.clone(), cx);
+        Self::load_session_capabilities(&entity, session_id.clone(), cx);
 
         Self::subscribe_to_stream_events(&entity, session_id.clone(), cx);
         Self::subscribe_to_code_selections(&entity, cx);
@@ -284,6 +294,107 @@ impl ConversationPanel {
         }
     }
 
+    fn apply_config_options(&mut self, options: Vec<AcpConfigOption>) {
+        clear_confirmed_options(&mut self.pending_config_options, &options);
+        self.config_options = options;
+    }
+
+    fn apply_config_stream_update(&mut self, data: &serde_json::Value) {
+        match data.get("type").and_then(serde_json::Value::as_str) {
+            Some("acp_config_option") => {
+                if let Some(options) = data
+                    .get("data")
+                    .and_then(|value| value.get("config_options"))
+                    .cloned()
+                    .and_then(|value| serde_json::from_value::<Vec<AcpConfigOption>>(value).ok())
+                {
+                    self.apply_config_options(options);
+                }
+            }
+            Some("acp_mode_info") => {
+                let Some(mode) = data
+                    .get("data")
+                    .and_then(|value| value.get("current_mode_id"))
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    return;
+                };
+                if let Some(option) = self.config_options.iter_mut().find(|option| option.id == "mode") {
+                    option.current_value = Some(mode.to_owned());
+                    clear_confirmed_options(&mut self.pending_config_options, &self.config_options);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn load_session_capabilities(entity: &Entity<Self>, conversation_id: String, cx: &mut App) {
+        let Some(store) = AppState::global(cx).conversation_store().cloned() else {
+            return;
+        };
+        let weak_entity = entity.downgrade();
+        cx.spawn(async move |cx| {
+            let runtime = store.ensure_runtime(&conversation_id).await;
+            let commands = store.list_slash_commands(&conversation_id).await;
+            let _ = cx.update(|cx| {
+                let Some(entity) = weak_entity.upgrade() else {
+                    return;
+                };
+                entity.update(cx, |this, cx| {
+                    if let Ok(runtime) = runtime {
+                        this.apply_config_options(runtime.config_options);
+                        this.session_status = Self::runtime_status(Some(&runtime.runtime));
+                    } else if let Err(error) = runtime {
+                        log::debug!("Unable to load ACP config options: {error:?}");
+                    }
+                    if let Ok(commands) = commands {
+                        this.slash_commands = commands;
+                    } else if let Err(error) = commands {
+                        log::debug!("Unable to load ACP slash commands: {error:?}");
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn set_config_option(&mut self, option_id: String, value: String, cx: &mut Context<Self>) {
+        let Some(conversation_id) = self.session_id.clone() else {
+            return;
+        };
+        let Some(store) = AppState::global(cx).conversation_store().cloned() else {
+            return;
+        };
+        self.pending_config_options.insert(option_id.clone());
+        let entity = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            let result = store.set_config_option(&conversation_id, &option_id, value).await;
+            let _ = cx.update(|cx| {
+                let Some(entity) = entity.upgrade() else {
+                    return;
+                };
+                entity.update(cx, |this, cx| match result {
+                    Ok(response) => {
+                        if let Some(options) = response.config_options {
+                            this.apply_config_options(options);
+                        }
+                        if response.confirmation != "pending_next_turn" {
+                            this.pending_config_options.remove(&option_id);
+                        }
+                        cx.notify();
+                    }
+                    Err(error) => {
+                        this.pending_config_options.remove(&option_id);
+                        log::warn!("Failed to update ACP config option {option_id}: {error:?}");
+                        cx.notify();
+                    }
+                });
+            });
+        })
+        .detach();
+    }
+
     fn new(window: &mut Window, cx: &mut App) -> Self {
         log::info!("🔧 Initializing ConversationPanel (new)");
         Self::new_internal(None, window, cx)
@@ -334,6 +445,9 @@ impl ConversationPanel {
             draft_assistants,
             draft_assistant_id,
             draft_workspace: None,
+            config_options: Vec::new(),
+            pending_config_options: std::collections::HashSet::new(),
+            slash_commands: Vec::new(),
         }
     }
 
@@ -446,6 +560,7 @@ impl ConversationPanel {
                             if let Some(entity) = weak_entity.upgrade() {
                                 entity.update(cx, |this, cx| {
                                     if let Some(store) = AppState::global(cx).conversation_store() {
+                                        this.apply_config_stream_update(&data);
                                         let _ = store.apply_websocket_event("message.stream", &data);
                                         let state = store.message_snapshot();
                         this.history_messages = state.messages;
@@ -721,6 +836,66 @@ impl ConversationPanel {
                         }
                     }),
             )
+            .into_any_element()
+    }
+
+    fn render_session_config(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let panel = cx.entity();
+        let options = self
+            .config_options
+            .iter()
+            .filter(|option| option.option_type == "select" && !option.options.is_empty())
+            .cloned()
+            .collect::<Vec<_>>();
+        if options.is_empty() {
+            return div().into_any_element();
+        }
+
+        h_flex()
+            .w_full()
+            .gap_1()
+            .px_2()
+            .py_1()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .children(options.into_iter().map(|option| {
+                let option_id = option.id.clone();
+                let label = option
+                    .label
+                    .clone()
+                    .or(option.name.clone())
+                    .unwrap_or_else(|| option.id.clone());
+                let value = option.current_value.clone().unwrap_or_else(|| "Select".to_owned());
+                let pending = self.pending_config_options.contains(&option.id);
+                let options = option.options.clone();
+                let panel = panel.clone();
+
+                Button::new(("session-config-option", confirmation_element_id(&option_id)))
+                    .label(if pending {
+                        format!("{label}: {value} (next turn)")
+                    } else {
+                        format!("{label}: {value}")
+                    })
+                    .ghost()
+                    .xsmall()
+                    .dropdown_menu(move |menu, window, _| {
+                        let option_id = option_id.clone();
+                        options.iter().fold(menu, |menu, item| {
+                            let value = item.value.clone();
+                            let item_label = item
+                                .label
+                                .clone()
+                                .or(item.name.clone())
+                                .unwrap_or_else(|| value.clone());
+                            let option_id = option_id.clone();
+                            menu.item(PopupMenuItem::new(item_label).on_click(
+                                window.listener_for(&panel, move |this, _, _, cx| {
+                                    this.set_config_option(option_id.clone(), value.clone(), cx)
+                                }),
+                            ))
+                        })
+                    })
+            }))
             .into_any_element()
     }
 
@@ -1004,9 +1179,18 @@ impl ConversationPanel {
     }
 }
 
+fn clear_confirmed_options(pending: &mut std::collections::HashSet<String>, options: &[AcpConfigOption]) {
+    for option in options {
+        if option.current_value.is_some() {
+            pending.remove(&option.id);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{normalized_tab_title, workspace_from_extra};
+    use super::{AcpConfigOption, clear_confirmed_options, normalized_tab_title, workspace_from_extra};
+    use serde_json::json;
     use std::path::PathBuf;
 
     #[test]
@@ -1026,6 +1210,42 @@ mod tests {
     fn workspace_path_ignores_missing_or_invalid_extra() {
         assert_eq!(workspace_from_extra(&serde_json::json!({})), None);
         assert_eq!(workspace_from_extra(&serde_json::json!({ "workspace": 42 })), None);
+    }
+
+    #[test]
+    fn config_snapshot_clears_pending_option() {
+        let options = vec![AcpConfigOption {
+            id: "mode".to_owned(),
+            name: None,
+            label: None,
+            description: None,
+            category: None,
+            option_type: "select".to_owned(),
+            current_value: Some("plan".to_owned()),
+            options: Vec::new(),
+        }];
+        let mut pending = ["mode".to_owned()].into_iter().collect();
+        clear_confirmed_options(&mut pending, &options);
+        assert!(!pending.contains("mode"));
+    }
+
+    #[test]
+    fn mode_info_clears_pending_mode() {
+        let mut options = vec![AcpConfigOption {
+            id: "mode".to_owned(),
+            name: None,
+            label: None,
+            description: None,
+            category: None,
+            option_type: "select".to_owned(),
+            current_value: Some("plan".to_owned()),
+            options: Vec::new(),
+        }];
+        let mut pending = ["mode".to_owned()].into_iter().collect();
+        options[0].current_value = Some("plan".to_owned());
+        clear_confirmed_options(&mut pending, &options);
+        assert_eq!(options[0].current_value.as_deref(), Some("plan"));
+        assert!(!pending.contains("mode"));
     }
 }
 
@@ -1155,16 +1375,27 @@ impl Render for ConversationPanel {
                     .when(self.session_id.is_none(), |this| {
                         this.child(self.render_draft_config(cx))
                     })
+                    .when(self.session_id.is_some(), |this| {
+                        this.child(self.render_session_config(cx))
+                    })
                     // .border_color(cx.theme().border)
                     .child({
                         let entity = cx.entity().clone();
                         let is_disabled = self.is_input_disabled();
+                        let command_suggestions = self
+                            .slash_commands
+                            .iter()
+                            .map(|command| AvailableCommand::new(command.command.clone(), command.description.clone()))
+                            .collect::<Vec<_>>();
+                        let show_command_suggestions = self.input_state.read(cx).value().trim_start().starts_with('/');
                         ChatInputBox::new("chat-input", self.input_state.clone())
                             .pasted_images(self.pasted_images.clone())
                             .code_selections(self.code_selections.clone())
                             .session_status(self.session_status.as_ref().map(|info| info.status.clone()))
                             .agent_icon(self.agent_icon.clone().unwrap_or(IconName::Bot))
                             .when_some(self.agent_name.clone(), |this, name| this.agent_name(name))
+                            .command_suggestions(command_suggestions)
+                            .show_command_suggestions(show_command_suggestions)
                             .disabled(is_disabled)
                             .on_paste(move |window, cx| {
                                 entity.update(cx, |this, cx| {

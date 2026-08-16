@@ -8,8 +8,8 @@ use super::message_reducer::{MessageStreamReducer, MessageStreamState};
 use super::models::{
     ApiResponse, AskAnswerRequest, CancelConversationRequest, CancelConversationResponse, ChatFileRef, ConfirmRequest,
     Confirmation, ConversationListResponse, ConversationNameUpdatedPayload, ConversationResponse,
-    CreateConversationRequest, MessageListResponse, MessageResponse, SendMessageRequest, SendMessageResponse,
-    UpdateConversationRequest,
+    CreateConversationRequest, EnsureConversationRuntimeResponse, MessageListResponse, MessageResponse,
+    SendMessageRequest, SendMessageResponse, SetConfigOptionResponse, SlashCommand, UpdateConversationRequest,
 };
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -270,6 +270,36 @@ impl ConversationStore {
             .expect("message reducer mutex poisoned")
             .set_cancelling(response.runtime.clone());
         Ok(response)
+    }
+
+    pub async fn ensure_runtime(
+        &self,
+        conversation_id: &str,
+    ) -> Result<EnsureConversationRuntimeResponse, CoreClientError> {
+        let path = format!("/api/conversations/{conversation_id}/runtime/ensure");
+        let response: ApiResponse<EnsureConversationRuntimeResponse> =
+            self.client.request_json(Method::POST, &path, None).await?;
+        response.data.ok_or(CoreClientError::Decode)
+    }
+
+    pub async fn list_slash_commands(&self, conversation_id: &str) -> Result<Vec<SlashCommand>, CoreClientError> {
+        let path = format!("/api/conversations/{conversation_id}/slash-commands");
+        let response: ApiResponse<Vec<SlashCommand>> = self.client.request_json(Method::GET, &path, None).await?;
+        response.data.ok_or(CoreClientError::Decode)
+    }
+
+    pub async fn set_config_option(
+        &self,
+        conversation_id: &str,
+        option_id: &str,
+        value: String,
+    ) -> Result<SetConfigOptionResponse, CoreClientError> {
+        let path = format!("/api/conversations/{conversation_id}/config-options/{option_id}");
+        let response: ApiResponse<SetConfigOptionResponse> = self
+            .client
+            .request_json(Method::PUT, &path, Some(serde_json::json!({ "value": value })))
+            .await?;
+        response.data.ok_or(CoreClientError::Decode)
     }
 
     pub fn apply_websocket_event(&self, name: &str, data: &Value) -> ConversationEventAction {
