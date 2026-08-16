@@ -160,7 +160,10 @@ fn default_dock_placement() -> DockPlacement {
 }
 
 // 切换 Dock 切换按钮的显示状态 / 打开会话管理面板
-actions!(agent_studio, [ToggleDockToggleButton, OpenSessionManager]);
+actions!(
+    agent_studio,
+    [ToggleDockToggleButton, OpenSessionManager, CloseConversationTab]
+);
 
 // ============================================================================
 // Task List Actions - 任务列表相关操作

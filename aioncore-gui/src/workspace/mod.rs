@@ -23,7 +23,7 @@ mod startup;
 
 const MAIN_DOCK_AREA: DockAreaTab = DockAreaTab {
     id: "main-dock",
-    version: 8,
+    version: 9,
 };
 
 pub struct DockWorkspace {
@@ -474,6 +474,7 @@ impl Render for DockWorkspace {
             .on_action(cx.listener(Self::on_action_toggle_file_manager))
             .on_action(cx.listener(Self::on_action_toggle_panel_visible))
             .on_action(cx.listener(Self::on_action_toggle_dock_toggle_button))
+            .on_action(cx.listener(Self::on_action_close_conversation_tab))
             .on_action(cx.listener(Self::on_action_open_setting_panel))
             .on_action(cx.listener(Self::on_action_open_session_manager))
             .on_action(cx.listener(Self::on_action_new_session_conversation_panel))

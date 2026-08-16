@@ -57,22 +57,7 @@ fn main() {
             }
         }
         log::info!("AionCore GUI configured for backend {}", config.backend_url);
-        let proxy = aioncore_gui::AppSettings::global(cx).clone();
-        let (http_proxy_url, https_proxy_url, all_proxy_url) = if proxy.proxy_enabled {
-            (
-                Some(proxy.http_proxy_url.as_str()),
-                Some(proxy.https_proxy_url.as_str()),
-                Some(proxy.all_proxy_url.as_str()),
-            )
-        } else {
-            (None, None, None)
-        };
-        if let Err(error) = aioncore_gui::AppState::global_mut(cx).connect_core(
-            &config.backend_url,
-            http_proxy_url,
-            https_proxy_url,
-            all_proxy_url,
-        ) {
+        if let Err(error) = aioncore_gui::AppState::global_mut(cx).connect_core(&config.backend_url) {
             write_startup_log(&format!("backend.connect.failed error={error}"));
             log::warn!("Failed to initialize AionCore connection: {error}");
         } else {

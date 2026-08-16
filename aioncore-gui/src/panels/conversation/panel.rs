@@ -60,6 +60,7 @@ pub struct ConversationPanel {
     workspace_id: Option<String>,
     workspace_name: Option<String>,
     working_directory: Option<String>,
+    is_active: bool,
     agent_icon: Option<IconName>,
     agent_name: Option<String>,
     conversation_title: Option<String>,
@@ -269,6 +270,20 @@ impl ConversationPanel {
             .or_else(|| self.draft_workspace.clone())
     }
 
+    fn update_active_workspace(&self, cx: &mut App) {
+        if self.is_active {
+            let workspace_state = AppState::global(cx).active_conversation_workspace.clone();
+            let workspace = self.effective_workspace();
+            workspace_state.update(cx, |current, cx| {
+                if *current == workspace {
+                    return;
+                }
+                *current = workspace;
+                cx.notify();
+            });
+        }
+    }
+
     fn new(window: &mut Window, cx: &mut App) -> Self {
         log::info!("🔧 Initializing ConversationPanel (new)");
         Self::new_internal(None, window, cx)
@@ -312,6 +327,7 @@ impl ConversationPanel {
             workspace_id: None,
             workspace_name: None,
             working_directory: None,
+            is_active: false,
             agent_icon: None,
             agent_name: None,
             conversation_title: None,
@@ -399,6 +415,7 @@ impl ConversationPanel {
                             .as_ref()
                             .and_then(|conversation| workspace_from_extra(&conversation.extra))
                             .and_then(|workspace| workspace.into_os_string().into_string().ok());
+                        this.update_active_workspace(cx);
                         this.active_turn_id = message_state.active_turn_id;
                         this.scroll_handle.scroll_to_bottom();
                         cx.notify();
@@ -1038,7 +1055,14 @@ impl DockPanel for ConversationPanel {
     }
 
     fn on_active_any(view: gpui::AnyView, active: bool, window: &mut Window, cx: &mut App) {
-        let _ = (view, active, window, cx);
+        let _ = window;
+        let Ok(conversation) = view.downcast::<Self>() else {
+            return;
+        };
+        conversation.update(cx, |conversation, cx| {
+            conversation.is_active = active;
+            conversation.update_active_workspace(cx);
+        });
     }
 
     fn paddings() -> gpui::Pixels {

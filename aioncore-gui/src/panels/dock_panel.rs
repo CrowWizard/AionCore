@@ -597,6 +597,21 @@ impl Panel for DockPanelContainer {
                         );
                     }),
             );
+            let has_session = self
+                .agent_studio
+                .clone()
+                .and_then(|view| view.downcast::<ConversationPanel>().ok())
+                .is_some_and(|conversation| conversation.read(_cx).session_id().is_some());
+            if has_session {
+                buttons.push(
+                    Button::new("close-conversation-tab")
+                        .icon(IconName::Close)
+                        .tooltip("关闭会话标签")
+                        .on_click(|_, window, cx| {
+                            window.dispatch_action(Box::new(crate::app::actions::CloseConversationTab), cx)
+                        }),
+                );
+            }
         }
         Some(buttons)
     }

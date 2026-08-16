@@ -108,11 +108,25 @@ impl CodeEditorPanel {
         let go_to_line_state = cx.new(|cx| InputState::new(window, cx));
 
         let tree_state = cx.new(|cx| TreeState::new(cx));
-        let working_dir = working_dir.unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
+        let working_dir = AppState::global(cx)
+            .active_conversation_workspace
+            .read(cx)
+            .clone()
+            .filter(|path| path.is_dir())
+            .or(working_dir)
+            .unwrap_or_else(|| AppState::global(cx).current_working_dir().clone());
 
-        let _subscriptions = vec![cx.subscribe(&editor, |this, _, _: &InputEvent, cx| {
-            this.lint_document(cx);
-        })];
+        let active_workspace = AppState::global(cx).active_conversation_workspace.clone();
+        let _subscriptions = vec![
+            cx.subscribe(&editor, |this, _, _: &InputEvent, cx| {
+                this.lint_document(cx);
+            }),
+            cx.observe(&active_workspace, |this, workspace, cx| {
+                if let Some(path) = workspace.read(cx).clone() {
+                    this.switch_workspace(path, cx);
+                }
+            }),
+        ];
 
         Self {
             editor,
@@ -377,6 +391,19 @@ impl CodeEditorPanel {
             .on_click(cx.listener(|this, _, _, cx| {
                 this.show_file_tree = !this.show_file_tree;
                 cx.notify();
+            }))
+    }
+
+    fn render_open_workspace_button(&self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        Button::new("open-workspace-in-file-manager")
+            .icon(IconName::FolderOpen)
+            .ghost()
+            .xsmall()
+            .tooltip("在资源管理器打开当前文件夹")
+            .on_click(cx.listener(|this, _, _, _| {
+                if let Err(error) = crate::utils::external_editor::open_in_file_manager(&this.working_directory) {
+                    log::warn!("Failed to open workspace in file manager: {error}");
+                }
             }))
     }
 
@@ -692,6 +719,7 @@ impl Render for CodeEditorPanel {
                         h_flex()
                             .gap_3()
                             .child(self.render_toggle_file_tree_button(window, cx))
+                            .child(self.render_open_workspace_button(window, cx))
                             .child(self.render_line_number_button(window, cx))
                             .child(self.render_soft_wrap_button(window, cx))
                             .child(self.render_indent_guides_button(window, cx)),

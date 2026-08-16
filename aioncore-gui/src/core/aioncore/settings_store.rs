@@ -13,6 +13,7 @@ pub struct SettingsState {
     pub settings: Option<SystemSettingsResponse>,
     pub skills: Vec<SkillListItemResponse>,
     pub assistants: Vec<AssistantResponse>,
+    pub agents: Vec<Value>,
     pub providers: Vec<Value>,
     pub mcp_servers: Vec<Value>,
     pub is_loading: bool,
@@ -46,6 +47,10 @@ impl SettingsStore {
                 self.client.request_json(Method::GET, "/api/skills", None).await?;
             let assistants: ApiResponse<Vec<AssistantResponse>> =
                 self.client.request_json(Method::GET, "/api/assistants", None).await?;
+            let agents: ApiResponse<Vec<Value>> = self
+                .client
+                .request_json(Method::GET, "/api/agents/management", None)
+                .await?;
             let providers: ApiResponse<Vec<Value>> =
                 self.client.request_json(Method::GET, "/api/providers", None).await?;
             let mcp_servers: ApiResponse<Vec<Value>> =
@@ -54,6 +59,7 @@ impl SettingsStore {
                 settings.data.ok_or(CoreClientError::Decode)?,
                 skills.data.ok_or(CoreClientError::Decode)?,
                 assistants.data.ok_or(CoreClientError::Decode)?,
+                agents.data.ok_or(CoreClientError::Decode)?,
                 providers.data.ok_or(CoreClientError::Decode)?,
                 mcp_servers.data.ok_or(CoreClientError::Decode)?,
             ))
@@ -63,10 +69,11 @@ impl SettingsStore {
         let mut state = self.state.write().expect("settings state lock poisoned");
         state.is_loading = false;
         match result {
-            Ok((settings, skills, assistants, providers, mcp_servers)) => {
+            Ok((settings, skills, assistants, agents, providers, mcp_servers)) => {
                 state.settings = Some(settings);
                 state.skills = skills;
                 state.assistants = assistants;
+                state.agents = agents;
                 state.providers = providers;
                 state.mcp_servers = mcp_servers;
                 state.error = None;

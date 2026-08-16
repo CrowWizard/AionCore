@@ -3,7 +3,7 @@ use gpui::{
     Styled as _, Window, px,
 };
 use gpui_component::{
-    ActiveTheme,
+    ActiveTheme, Theme, ThemeRegistry,
     label::Label,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
     v_flex,
@@ -75,10 +75,30 @@ impl SettingsPanel {
         .detach();
     }
 
-    fn general_page(&self, view: &Entity<Self>) -> SettingPage {
+    fn general_page(
+        &self,
+        view: &Entity<Self>,
+        theme_options: Vec<(gpui::SharedString, gpui::SharedString)>,
+    ) -> SettingPage {
         let panel = view.clone();
         SettingPage::new("通用").default_open(true).groups(vec![
             SettingGroup::new().title("界面").items(vec![
+                SettingItem::new(
+                    "主题",
+                    SettingField::dropdown(
+                        theme_options,
+                        |cx: &App| cx.theme().theme_name().clone(),
+                        |theme_name, cx: &mut App| {
+                            if let Some(theme) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
+                                Theme::global_mut(cx).apply_config(&theme);
+                                let font_size = AppSettings::global(cx).font_size;
+                                Theme::global_mut(cx).font_size = gpui::px(font_size as f32);
+                                crate::app::themes::save_state(cx);
+                                cx.refresh_windows();
+                            }
+                        },
+                    ),
+                ),
                 SettingItem::new(
                     "深色模式",
                     SettingField::switch(
@@ -90,6 +110,17 @@ impl SettingsPanel {
                                 gpui_component::ThemeMode::Light
                             };
                             gpui_component::Theme::change(mode, None, cx);
+                            crate::app::themes::save_state(cx);
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    "自动切换主题",
+                    SettingField::switch(
+                        |cx: &App| AppSettings::global(cx).auto_switch_theme,
+                        |enabled, cx: &mut App| {
+                            AppSettings::global_mut(cx).auto_switch_theme = enabled;
+                            crate::app::themes::save_state(cx);
                         },
                     ),
                 ),
@@ -99,6 +130,7 @@ impl SettingsPanel {
                         |cx: &App| AppSettings::global(cx).auto_check_on_startup,
                         |enabled, cx: &mut App| {
                             AppSettings::global_mut(cx).auto_check_on_startup = enabled;
+                            crate::app::themes::save_state(cx);
                         },
                     ),
                 ),
@@ -142,54 +174,73 @@ impl SettingsPanel {
                         },
                     ),
                 ),
+                SettingItem::new(
+                    "Cron 通知",
+                    SettingField::switch(
+                        |cx: &App| {
+                            AppState::global(cx)
+                                .settings_store()
+                                .and_then(|store| store.snapshot().settings)
+                                .is_some_and(|settings| settings.cron_notification_enabled)
+                        },
+                        {
+                            let panel = panel.clone();
+                            move |enabled, cx: &mut App| {
+                                panel.update(cx, |panel, cx| {
+                                    panel.update_system_setting("cron_notification_enabled", enabled, cx);
+                                });
+                            }
+                        },
+                    ),
+                ),
+                SettingItem::new(
+                    "命令队列",
+                    SettingField::switch(
+                        |cx: &App| {
+                            AppState::global(cx)
+                                .settings_store()
+                                .and_then(|store| store.snapshot().settings)
+                                .is_some_and(|settings| settings.command_queue_enabled)
+                        },
+                        {
+                            let panel = panel.clone();
+                            move |enabled, cx: &mut App| {
+                                panel.update(cx, |panel, cx| {
+                                    panel.update_system_setting("command_queue_enabled", enabled, cx);
+                                });
+                            }
+                        },
+                    ),
+                ),
             ]),
+            SettingGroup::new()
+                .title("环境信息")
+                .item(SettingItem::render(|_, _, cx| {
+                    let current_directory = AppState::global(cx).current_working_dir().display().to_string();
+                    let workspace_root = AppState::global(cx).current_working_dir().display().to_string();
+                    let current_time = chrono::Local::now().format("%Y-%m-%d %H:%M:%S %:z").to_string();
+
+                    v_flex()
+                        .w_full()
+                        .gap_2()
+                        .children([
+                            Label::new(format!("当前时间: {current_time}")).text_sm(),
+                            Label::new(format!("工作目录: {current_directory}")).text_sm(),
+                            Label::new(format!("Workspace 根目录: {workspace_root}")).text_sm(),
+                        ])
+                        .into_any_element()
+                })),
         ])
     }
 
     fn proxy_page(&self) -> SettingPage {
-        SettingPage::new("代理服务").groups(vec![SettingGroup::new().title("GUI 到 AionCore 的连接").items(vec![
-                SettingItem::new(
-                    "启用代理",
-                    SettingField::switch(
-                        |cx: &App| AppSettings::global(cx).proxy_enabled,
-                        |enabled, cx: &mut App| {
-                            AppSettings::global_mut(cx).proxy_enabled = enabled;
-                            crate::app::themes::save_state(cx);
-                        },
-                    ),
-                )
-                .description("保存后在下次连接或重启 GUI 时生效。"),
-                SettingItem::new(
-                    "HTTP 代理",
-                    SettingField::input(
-                        |cx: &App| AppSettings::global(cx).http_proxy_url.clone().into(),
-                        |value, cx: &mut App| {
-                            AppSettings::global_mut(cx).http_proxy_url = value.to_string();
-                            crate::app::themes::save_state(cx);
-                        },
-                    ),
-                ),
-                SettingItem::new(
-                    "HTTPS 代理",
-                    SettingField::input(
-                        |cx: &App| AppSettings::global(cx).https_proxy_url.clone().into(),
-                        |value, cx: &mut App| {
-                            AppSettings::global_mut(cx).https_proxy_url = value.to_string();
-                            crate::app::themes::save_state(cx);
-                        },
-                    ),
-                ),
-                SettingItem::new(
-                    "通用代理",
-                    SettingField::input(
-                        |cx: &App| AppSettings::global(cx).all_proxy_url.clone().into(),
-                        |value, cx: &mut App| {
-                            AppSettings::global_mut(cx).all_proxy_url = value.to_string();
-                            crate::app::themes::save_state(cx);
-                        },
-                    ),
-                ),
-            ])])
+        SettingPage::new("ACP 代理服务").groups(vec![SettingGroup::new().title("ACP agent 进程环境").item(
+            SettingItem::render(|_, _, _| {
+                Label::new("代理变量必须随 ACP agent 的命令、参数和环境变量保存到 AionCore agent runtime；不作用于 GUI 到 Core 的连接。")
+                    .text_sm()
+                    .into_any_element()
+            }),
+        )])
     }
 
     fn models_page(&self) -> SettingPage {
@@ -290,10 +341,35 @@ impl SettingsPanel {
     }
 
     fn commands_page(&self) -> SettingPage {
-        SettingPage::new("命令").groups(vec![SettingGroup::new().title("Slash commands").item(
-            SettingItem::render(|_, _, _| {
-                Label::new("命令由当前 Conversation 的 agent 提供，在输入框键入 / 后显示。")
-                    .text_sm()
+        SettingPage::new("ACP Agents").groups(vec![SettingGroup::new().title("已注册 agent runtime").item(
+            SettingItem::render(|_, _, cx| {
+                let agents = AppState::global(cx)
+                    .settings_store()
+                    .map(|store| store.snapshot().agents)
+                    .unwrap_or_default();
+                if agents.is_empty() {
+                    return Label::new("未从 AionCore 获取到 agent runtime")
+                        .text_sm()
+                        .into_any_element();
+                }
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .children(agents.into_iter().map(|agent| {
+                        let name = agent
+                            .get("name")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("Unnamed");
+                        let command = agent
+                            .get("command")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("内置 agent");
+                        let status = agent
+                            .get("status")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("unknown");
+                        Label::new(format!("{name}: {command} ({status})")).text_sm()
+                    }))
                     .into_any_element()
             }),
         )])
@@ -309,9 +385,14 @@ impl Focusable for SettingsPanel {
 impl Render for SettingsPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity();
+        let theme_options = ThemeRegistry::global(cx)
+            .sorted_themes()
+            .into_iter()
+            .map(|theme| (theme.name.clone(), theme.name.clone()))
+            .collect();
         Settings::new("aioncore-settings")
             .pages([
-                self.general_page(&view),
+                self.general_page(&view, theme_options),
                 self.proxy_page(),
                 self.models_page(),
                 self.prompts_page(),

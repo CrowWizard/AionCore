@@ -23,6 +23,7 @@ pub struct AppState {
     // UI state (GPUI entities)
     pub invisible_panels: Entity<Vec<SharedString>>,
     pub selected_tool_call: Entity<Option<agent_client_protocol::schema::ToolCall>>,
+    pub active_conversation_workspace: Entity<Option<PathBuf>>,
 
     // Infrastructure
     core_client: Option<Arc<CoreClient>>,
@@ -62,6 +63,7 @@ impl AppState {
             current_working_dir,
             tool_call_preview_max_lines: DEFAULT_TOOL_CALL_PREVIEW_MAX_LINES,
             selected_tool_call: cx.new(|_| None),
+            active_conversation_workspace: cx.new(|_| None),
             app_title: SharedString::from(""),
         };
         cx.set_global::<AppState>(state);
@@ -75,19 +77,8 @@ impl AppState {
         cx.global_mut::<Self>()
     }
 
-    pub fn connect_core(
-        &mut self,
-        backend_url: &str,
-        http_proxy_url: Option<&str>,
-        https_proxy_url: Option<&str>,
-        all_proxy_url: Option<&str>,
-    ) -> Result<(), crate::core::aioncore::CoreClientError> {
-        let client = Arc::new(CoreClient::new_with_proxy(
-            backend_url,
-            http_proxy_url,
-            https_proxy_url,
-            all_proxy_url,
-        )?);
+    pub fn connect_core(&mut self, backend_url: &str) -> Result<(), crate::core::aioncore::CoreClientError> {
+        let client = Arc::new(CoreClient::new(backend_url)?);
         let connection = client.connect();
         self.conversation_store = Some(ConversationStore::new(client.clone()));
         self.settings_store = Some(SettingsStore::new(client.clone()));

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::{
     AppState, ConversationPanel, OpenSessionManager, PanelAction, SelectProjectWorkspace, SessionManagerPanel,
     SettingsPanel, ToggleDockToggleButton, ToggleFileManager, TogglePanelVisible,
-    app::actions::{PanelCommand, PanelKind, Submit},
+    app::actions::{CloseConversationTab, PanelCommand, PanelKind, Submit},
     panels::{
         DockPanel,
         dock_panel::{DockPanelContainer, DockPanelState},
@@ -21,6 +21,43 @@ use crate::workspace::DockWorkspace;
 
 impl DockWorkspace {
     pub(in crate::workspace) fn submit(&mut self, _: &Submit, _: &mut Window, _cx: &mut Context<Self>) {}
+
+    pub(in crate::workspace) fn on_action_close_conversation_tab(
+        &mut self,
+        _: &CloseConversationTab,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some((tabs, active_panel)) = Self::find_focused_tab_panel(self.dock_area.read(cx).center(), window, cx)
+            .or_else(|| Self::find_first_tab_panel(self.dock_area.read(cx).center(), cx))
+        else {
+            return;
+        };
+        let Ok(container) = active_panel.view().downcast::<DockPanelContainer>() else {
+            return;
+        };
+        let is_session = container
+            .read(cx)
+            .agent_studio
+            .clone()
+            .and_then(|view| view.downcast::<ConversationPanel>().ok())
+            .is_some_and(|conversation| conversation.read(cx).session_id().is_some());
+        if !is_session {
+            return;
+        }
+
+        if tabs.read(cx).dump(cx).children.len() == 1 {
+            container.update(cx, |container, cx| {
+                container.replace_with_conversation_session(None, window, cx);
+                container.set_closable(false);
+            });
+            return;
+        }
+
+        self.dock_area.update(cx, |dock_area, cx| {
+            dock_area.center().remove_panel(active_panel, window, cx);
+        });
+    }
 
     /// Helper method to create and add a new ConversationPanel to the center
     pub fn add_conversation_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
