@@ -51,3 +51,9 @@
 - 失败原因：`list_projects_is_scoped_to_owner_and_ordered_by_latest_update` 使用 `other_user` 创建第二个 owner 的 Project，但 migration 030 已为 `projects.user_id` 增加 `REFERENCES users(id)`，测试 fixture 未先创建该用户，SQLite 返回错误 787。
 - 修复方式：在测试准备阶段插入合法的 `other_user` 用户记录；未放宽外键约束，也未修改业务实现。
 - 验证结果：`cargo nextest run -p aionui-db --test project_repository --no-fail-fast` 通过，10/10 测试通过。
+
+## 2026-08-17 调整 dev AionCore Action
+
+- 将 `.github/workflows/aioncore-dev.yml` 调整为仅在 `dev` 分支变更时构建 Windows x64 后端 `aioncore.exe`。
+- 构建目标为 `x86_64-pc-windows-msvc`，使用 `cargo build --release --target ... -p aionui-app`，并上传 `aioncore-windows-x64` Artifact。
+- 按要求移除该 workflow 中的 migration 检查、格式检查、Clippy 和 workspace 测试步骤；GUI Windows 构建仍由独立的 `aioncore-gui-windows.yml` 负责。

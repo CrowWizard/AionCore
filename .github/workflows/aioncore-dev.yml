@@ -1,4 +1,4 @@
-name: AionCore Dev
+name: AionCore Dev Windows x64
 
 on:
   push:
@@ -30,70 +30,30 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_HTTP_TIMEOUT: "600"
   CARGO_NET_RETRY: "10"
-  RUSTFLAGS: -D warnings
 
 jobs:
-  migration-immutability:
-    name: Migration Immutability
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Check migration immutability
-        run: bash scripts/migration/check-immutability.test.sh
-
-      - name: Verify migration immutability
-        run: bash scripts/migration/check-immutability.sh
-
-  format:
-    name: Format
-    runs-on: ubuntu-latest
+  build:
+    name: Build AionCore Windows x64
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.95.0"
-          components: rustfmt
-
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.95.0"
-          components: clippy
+          targets: x86_64-pc-windows-msvc
 
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: aioncore-dev
+          shared-key: aioncore-dev-windows-x64
 
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Build AionCore Windows x64
+        run: cargo build --release --target x86_64-pc-windows-msvc -p aionui-app
 
-  test:
-    name: Test Workspace
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Upload AionCore Windows x64
+        uses: actions/upload-artifact@v7
         with:
-          toolchain: "1.95.0"
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          prefix-key: aioncore-dev
-
-      - uses: taiki-e/install-action@nextest
-
-      - name: Run workspace tests
-        run: cargo nextest run --workspace
+          name: aioncore-windows-x64
+          path: target/x86_64-pc-windows-msvc/release/aioncore.exe
+          if-no-files-found: error
+          retention-days: 14
