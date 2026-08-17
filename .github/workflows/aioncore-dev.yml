@@ -38,10 +38,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: "1.95.0"
-          targets: x86_64-pc-windows-msvc
+      - name: Install Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.95.0 --profile minimal --no-self-update
+          rustup target add x86_64-pc-windows-msvc --toolchain 1.95.0
+          rustup default 1.95.0
 
       - uses: Swatinem/rust-cache@v2
         with:

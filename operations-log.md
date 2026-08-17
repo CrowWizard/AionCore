@@ -57,3 +57,8 @@
 - 将 `.github/workflows/aioncore-dev.yml` 调整为仅在 `dev` 分支变更时构建 Windows x64 后端 `aioncore.exe`。
 - 构建目标为 `x86_64-pc-windows-msvc`，使用 `cargo build --release --target ... -p aionui-app`，并上传 `aioncore-windows-x64` Artifact。
 - 按要求移除该 workflow 中的 migration 检查、格式检查、Clippy 和 workspace 测试步骤；GUI Windows 构建仍由独立的 `aioncore-gui-windows.yml` 负责。
+
+## 2026-08-17 修复 dev Action Rust toolchain 下载失败
+
+- 失败原因：GitHub Runner 下载 `dtolnay/rust-toolchain` Action 时，`codeload.github.com` 连续返回 502/503，尚未进入项目编译阶段。
+- 修复方式：移除该第三方 toolchain Action，改用 Windows Runner 自带的 `rustup` 安装固定版本 `1.95.0`，并添加 `x86_64-pc-windows-msvc` target。
