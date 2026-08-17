@@ -1,0 +1,99 @@
+name: AionCore Dev
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "scripts/**"
+      - "rust-toolchain.toml"
+      - "justfile"
+      - ".github/workflows/aioncore-dev.yml"
+  pull_request:
+    branches: [dev]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "scripts/**"
+      - "rust-toolchain.toml"
+      - "justfile"
+      - ".github/workflows/aioncore-dev.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_HTTP_TIMEOUT: "600"
+  CARGO_NET_RETRY: "10"
+  RUSTFLAGS: -D warnings
+
+jobs:
+  migration-immutability:
+    name: Migration Immutability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check migration immutability
+        run: bash scripts/migration/check-immutability.test.sh
+
+      - name: Verify migration immutability
+        run: bash scripts/migration/check-immutability.sh
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: aioncore-dev
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test Workspace
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95.0"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: aioncore-dev
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Run workspace tests
+        run: cargo nextest run --workspace

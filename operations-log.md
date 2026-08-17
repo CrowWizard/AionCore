@@ -37,3 +37,11 @@
 - 响应不包含模型消息内容、工具输入输出或 API 密钥，避免暴露持久化文件的敏感内容。
 - GUI Conversations 面板新增 Saved aionrs Sessions 区块，展示摘要、模型、消息数、更新时间和 session ID，并支持手动刷新。
 - 已完成后端 `cargo check -p aionui-api-types -p aionui-ai-agent -p aionui-app` 与 GUI `RUST_FONTCONFIG_DLOPEN=1 cargo check -p aioncore-gui` 定向编译检查。
+
+## 2026-08-17 数据库结构与用户归属分析
+
+- 已检查 `crates/aionui-db/migrations/001_initial_schema.sql` 至 `039_omp_direct_cli_launch.sql`，整理最终业务表、主键、外键、索引、级联关系和 JSON/软删除字段。
+- 已重点核对 `030_user_scope.sql`、`028_project_bind.sql`、`012_assistant_data_unification.sql`、`014_skill_management.sql` 与 `022_cron_execution_dedup.sql`，区分全局资源、用户资源和通过父表继承用户的从属表。
+- 已生成 `docs/database-schema.zh-CN.md`，包含数据字典、关系图、`user_id` 可空性矩阵、`system_default_user` 使用边界和维护风险。
+- 结论：builtin/internal `agent_metadata`、system builtin `assistant_definitions`、builtin `skills` 使用 `NULL` 表示全局；`folders` 是机器级全局资源且没有 `user_id`；其余用户级字段原则上不得为 NULL，`system_default_user` 仅用于系统初始化和历史单用户兼容回填。
+- 本次仅新增/更新 Markdown 文档，未修改数据库 schema、迁移或运行时代码；未执行数据库迁移和 workspace 编译测试。

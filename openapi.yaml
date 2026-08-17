@@ -1,0 +1,1707 @@
+openapi: 3.1.0
+info:
+  title: AionCore API
+  version: 0.1.67
+  description: |
+    AionCore 后端 HTTP API 文档。
+
+    说明：
+    - 除公开认证、健康检查、静态资源和 WebSocket 握手接口外，API 默认需要认证。
+    - 具体认证方式由部署配置决定，通常使用 Cookie 会话或 Bearer Token。
+    - 请求体和响应体中的业务对象会随 agent、插件和运行时能力变化；未在本文件中固定的对象使用兼容性对象描述。
+    - 所有接口统一使用 ApiResponse<T> 或 ErrorResponse 风格的响应包装。
+servers:
+  - url: http://127.0.0.1:25808
+    description: 本地默认服务地址
+  - url: /
+    description: 当前部署地址
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: 健康检查
+    description: 服务存活和健康状态。
+  - name: 认证
+    description: 登录、会话、用户和密码管理。
+  - name: Project
+    description: Project 和工作区文件夹管理。
+  - name: Conversation
+    description: 对话、消息、运行时和确认操作。
+  - name: ACP 会话
+    description: ACP agent 的 Session Mode、模型、配置项和命令。
+  - name: 文件系统
+    description: 文件上传、读取、写入、复制和版本快照操作。
+  - name: Provider
+    description: 模型 Provider 管理。
+  - name: MCP
+    description: MCP 服务器和 OAuth 管理。
+  - name: Agent
+    description: ACP agent 发现、管理和连接测试。
+  - name: Assistant
+    description: Assistant 配置管理。
+  - name: Channel
+    description: Telegram、Lark、DingTalk、WeChat、Slack 和 Discord 渠道。
+  - name: Team
+    description: Team、成员、任务、消息和运行控制。
+  - name: Cron
+    description: 定时任务和 Conversation Cron。
+  - name: Extension
+    description: 扩展、主题、技能和插件查询及管理。
+  - name: Office
+    description: Word、Excel、PPT 预览和文档转换。
+  - name: Shell
+    description: 系统打开文件、打开目录和语音转文字。
+  - name: 系统设置
+    description: 系统设置、版本检查和诊断。
+paths:
+  /health:
+    get:
+      tags: [健康检查]
+      summary: 健康检查
+      description: 返回服务状态、版本和构建时间。
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /ws:
+    get:
+      tags: [健康检查]
+      summary: WebSocket 事件连接
+      description: 升级为 WebSocket，接收实时业务事件。具体消息格式为 name 和 data。
+      security: []
+      responses:
+        '101': { description: WebSocket 升级成功 }
+  /login:
+    post:
+      tags: [认证]
+      summary: 登录
+      description: 使用用户名和密码创建登录会话。
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /logout:
+    post:
+      tags: [认证]
+      summary: 登出
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/status:
+    get:
+      tags: [认证]
+      summary: 查询认证状态
+      security: []
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/user:
+    get:
+      tags: [认证]
+      summary: 获取当前用户
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/qr-login:
+    post:
+      tags: [认证]
+      summary: 二维码登录
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/refresh:
+    post:
+      tags: [认证]
+      summary: 刷新认证令牌
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/change-password:
+    post:
+      tags: [认证]
+      summary: 修改当前用户密码
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/auth/internal/users:
+    get:
+      tags: [认证]
+      summary: 列出内部用户
+      description: 内部管理接口，需部署权限。
+      requestBody: { $ref: '#/components/requestBodies/Empty' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [认证]
+      summary: 创建内部用户
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/projects:
+    get:
+      tags: [Project]
+      summary: 获取全部 Project
+      description: 返回当前用户可访问的 Project 列表。
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/projects/{project_id}:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    get:
+      tags: [Project]
+      summary: 获取 Project 详情
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/projects/{project_id}/folders:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Project]
+      summary: 为 Project 添加文件夹
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/projects/{project_id}/folders/{pe_id}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/PeId' }
+    delete:
+      tags: [Project]
+      summary: 移除 Project 文件夹
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/projects/{project_id}/resolve-ref:
+    parameters: [{ $ref: '#/components/parameters/ProjectId' }]
+    post:
+      tags: [Project]
+      summary: 解析 Project 资源引用
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations:
+    get:
+      tags: [Conversation]
+      summary: 获取 Conversation 列表
+      description: 返回分页对话列表，支持查询参数过滤和分页。
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/PageSize' }
+        - { $ref: '#/components/parameters/Query' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Conversation]
+      summary: 创建 Conversation
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    get:
+      tags: [Conversation]
+      summary: 获取 Conversation 详情
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    patch:
+      tags: [Conversation]
+      summary: 更新 Conversation
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Conversation]
+      summary: 删除 Conversation
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/messages:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    get:
+      tags: [Conversation]
+      summary: 获取消息列表
+      parameters: [{ $ref: '#/components/parameters/Cursor' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Conversation]
+      summary: 发送消息
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/messages/{messageId}:
+    parameters:
+      - { $ref: '#/components/parameters/ConversationId' }
+      - { $ref: '#/components/parameters/MessageId' }
+    get:
+      tags: [Conversation]
+      summary: 获取单条消息
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/reset:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [Conversation]
+      summary: 重置 Conversation
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/fork:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [Conversation]
+      summary: Fork Conversation
+      description: 从指定消息位置创建新的 Conversation 分支。
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [Conversation]
+      summary: 取消当前 turn
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/runtime/ensure:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    post:
+      tags: [ACP 会话]
+      summary: 确保 Conversation runtime 存在
+      description: 启动或恢复 agent runtime，并返回 config options。
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/config-options/{option_id}:
+    parameters:
+      - { $ref: '#/components/parameters/ConversationId' }
+      - { $ref: '#/components/parameters/OptionId' }
+    put:
+      tags: [ACP 会话]
+      summary: 设置 ACP config option
+      description: 修改模型、Session Mode、推理等级或 agent 自定义配置。pending_next_turn 表示下一轮生效。
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/slash-commands:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    get:
+      tags: [ACP 会话]
+      summary: 获取当前 agent 的 Slash Commands
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/confirmations:
+    parameters: [{ $ref: '#/components/parameters/ConversationId' }]
+    get:
+      tags: [Conversation]
+      summary: 获取待确认请求
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/confirmations/{callId}/confirm:
+    parameters:
+      - { $ref: '#/components/parameters/ConversationId' }
+      - { $ref: '#/components/parameters/CallId' }
+    post:
+      tags: [Conversation]
+      summary: 确认工具调用
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/upload:
+    post:
+      tags: [文件系统]
+      summary: 上传文件
+      description: 上传文件到后端受控上传目录。默认大小限制为 30 MB。
+      requestBody: { $ref: '#/components/requestBodies/MultipartFile' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/list:
+    post:
+      tags: [文件系统]
+      summary: 列出工作区文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/read:
+    post:
+      tags: [文件系统]
+      summary: 读取文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/write:
+    post:
+      tags: [文件系统]
+      summary: 写入文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/copy:
+    post:
+      tags: [文件系统]
+      summary: 复制文件或目录
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/reveal:
+    post:
+      tags: [文件系统]
+      summary: 在系统文件管理器中显示项目
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/open-system:
+    post:
+      tags: [文件系统]
+      summary: 使用系统程序打开文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/copy-absolute-path:
+    post:
+      tags: [文件系统]
+      summary: 复制资源绝对路径到剪贴板
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/fs/content:
+    post:
+      tags: [文件系统]
+      summary: 读取文件内容
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    put:
+      tags: [文件系统]
+      summary: 写入文件内容
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/mcp/servers:
+    get:
+      tags: [MCP]
+      summary: 获取 MCP 服务器列表
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [MCP]
+      summary: 创建 MCP 服务器
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/mcp/servers/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    put:
+      tags: [MCP]
+      summary: 更新 MCP 服务器
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [MCP]
+      summary: 删除 MCP 服务器
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/mcp/servers/{id}/toggle:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [MCP]
+      summary: 启用或禁用 MCP 服务器
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/mcp/test-connection:
+    post:
+      tags: [MCP]
+      summary: 测试 MCP 服务器连接
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/providers:
+    get:
+      tags: [Provider]
+      summary: 获取 Provider 列表
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Provider]
+      summary: 创建 Provider
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/providers/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    put:
+      tags: [Provider]
+      summary: 更新 Provider
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Provider]
+      summary: 删除 Provider
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/assistants:
+    get:
+      tags: [Assistant]
+      summary: 获取 Assistant 列表
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Assistant]
+      summary: 创建 Assistant
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/assistants/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Assistant]
+      summary: 获取 Assistant 详情
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    put:
+      tags: [Assistant]
+      summary: 更新 Assistant
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Assistant]
+      summary: 删除 Assistant
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/assistants/{id}/state:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [Assistant]
+      summary: 修改 Assistant 启用状态
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/cron/jobs:
+    get:
+      tags: [Cron]
+      summary: 获取 Cron 任务列表
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Cron]
+      summary: 创建 Cron 任务
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/cron/jobs/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Cron]
+      summary: 获取 Cron 任务
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    put:
+      tags: [Cron]
+      summary: 更新 Cron 任务
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Cron]
+      summary: 删除 Cron 任务
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/cron/jobs/{id}/run:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Cron]
+      summary: 立即运行 Cron 任务
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/plugins:
+    get:
+      tags: [Channel]
+      summary: 获取渠道插件状态
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/plugins/enable:
+    post:
+      tags: [Channel]
+      summary: 启用渠道插件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/plugins/disable:
+    post:
+      tags: [Channel]
+      summary: 禁用渠道插件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/plugins/test:
+    post:
+      tags: [Channel]
+      summary: 测试渠道插件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/pairings:
+    get:
+      tags: [Channel]
+      summary: 获取待处理配对请求
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/pairings/approve:
+    post:
+      tags: [Channel]
+      summary: 同意渠道用户配对
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/pairings/reject:
+    post:
+      tags: [Channel]
+      summary: 拒绝渠道用户配对
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/users:
+    get:
+      tags: [Channel]
+      summary: 获取已授权渠道用户
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/users/revoke:
+    post:
+      tags: [Channel]
+      summary: 撤销渠道用户授权
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/channel/sessions:
+    get:
+      tags: [Channel]
+      summary: 获取活动渠道会话
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams:
+    get:
+      tags: [Team]
+      summary: 获取 Team 列表
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Team]
+      summary: 创建 Team
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Team]
+      summary: 获取 Team 详情
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Team]
+      summary: 删除 Team
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams/{id}/run-state:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Team]
+      summary: 获取 Team 运行状态
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams/{id}/tasks:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Team]
+      summary: 获取 Team 任务
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams/{id}/activity:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [Team]
+      summary: 获取 Team 活动
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/teams/{id}/messages:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [Team]
+      summary: 向 Team 发送消息
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/settings:
+    get:
+      tags: [系统设置]
+      summary: 获取系统设置
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    patch:
+      tags: [系统设置]
+      summary: 更新系统设置
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/system/info:
+    get:
+      tags: [系统设置]
+      summary: 获取系统信息
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/system/check-update:
+    post:
+      tags: [系统设置]
+      summary: 检查更新
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/extensions:
+    get:
+      tags: [Extension]
+      summary: 获取已加载扩展
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/extensions/themes:
+    get:
+      tags: [Extension]
+      summary: 获取扩展主题
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/extensions/agents:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Agent
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/extensions/skills:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Skills
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/shell/open-file:
+    post:
+      tags: [Shell]
+      summary: 使用系统程序打开文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/shell/show-item-in-folder:
+    post:
+      tags: [Shell]
+      summary: 在系统文件管理器中显示项目
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/word-preview/start:
+    post:
+      tags: [Office]
+      summary: 启动 Word 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/word-preview/stop:
+    post:
+      tags: [Office]
+      summary: 停止 Word 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/excel-preview/start:
+    post:
+      tags: [Office]
+      summary: 启动 Excel 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/excel-preview/stop:
+    post:
+      tags: [Office]
+      summary: 停止 Excel 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/ppt-preview/start:
+    post:
+      tags: [Office]
+      summary: 启动 PPT 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/ppt-preview/stop:
+    post:
+      tags: [Office]
+      summary: 停止 PPT 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/document/convert:
+    post:
+      tags: [Office]
+      summary: 转换文档
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/conversations/{id}/associated:
+    get:
+      tags: [Conversation]
+      summary: 获取关联 Conversation
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/artifacts:
+    get:
+      tags: [Conversation]
+      summary: 获取 Conversation 产物
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/artifacts/{artifactId}:
+    patch:
+      tags: [Conversation]
+      summary: 更新 Conversation 产物
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/asks/{requestId}/answer:
+    post:
+      tags: [Conversation]
+      summary: 回答 agent 问题
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/active-lease:
+    post:
+      tags: [Conversation]
+      summary: 续租 Conversation 活跃锁
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/approvals/check:
+    get:
+      tags: [Conversation]
+      summary: 检查 Conversation 审批状态
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/active-count:
+    get:
+      tags: [Conversation]
+      summary: 获取活动 Conversation 数量
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/clone:
+    post:
+      tags: [Conversation]
+      summary: 克隆 Conversation
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/messages/search:
+    get:
+      tags: [Conversation]
+      summary: 搜索消息
+      parameters: [{ $ref: '#/components/parameters/Query' }]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/dir:
+    post:
+      tags: [文件系统]
+      summary: 获取目录文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/metadata:
+    post:
+      tags: [文件系统]
+      summary: 获取文件元数据
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/content/metadata:
+    post:
+      tags: [文件系统]
+      summary: 获取文件内容元数据
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/stream:
+    get:
+      tags: [文件系统]
+      summary: 流式读取文件
+      responses: { '200': { description: 文件流 } }
+  /api/fs/image-base64:
+    post:
+      tags: [文件系统]
+      summary: 获取图片 Base64
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/fetch-remote-image:
+    post:
+      tags: [文件系统]
+      summary: 获取远程图片
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/servers/import:
+    post:
+      tags: [MCP]
+      summary: 批量导入 MCP 服务器
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/agent-configs:
+    get:
+      tags: [MCP]
+      summary: 获取 agent MCP 配置
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/providers/detect-protocol:
+    post:
+      tags: [Provider]
+      summary: 检测 Provider 协议
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/providers/fetch-models:
+    post:
+      tags: [Provider]
+      summary: 匿名获取模型列表
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/providers/{id}/models:
+    post:
+      tags: [Provider]
+      summary: 获取 Provider 模型
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/system/ensure-node-runtime:
+    post:
+      tags: [系统设置]
+      summary: 准备 Node runtime
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/system/diagnostics/feedback-report:
+    get:
+      tags: [系统设置]
+      summary: 获取脱敏反馈诊断
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/shell/open-external:
+    post:
+      tags: [Shell]
+      summary: 打开外部资源
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/shell/open-folder-with:
+    post:
+      tags: [Shell]
+      summary: 使用指定程序打开目录
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/shell/check-tool-installed:
+    post:
+      tags: [Shell]
+      summary: 检查系统工具是否安装
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/stt:
+    post:
+      tags: [Shell]
+      summary: 语音转文字
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/stt/stream:
+    get:
+      tags: [Shell]
+      summary: 流式语音转文字
+      responses: { '200': { description: 流式语音响应 } }
+  /api/runtime/team-tools/context:
+    get:
+      tags: [Team]
+      summary: 获取运行时 Team 工具上下文
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/runtime/team-tools/call:
+    post:
+      tags: [Team]
+      summary: 调用运行时 Team 工具
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/assets/logos/{asset_path}:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Logo 资源
+      security: []
+      parameters:
+        - name: asset_path
+          in: path
+          required: true
+          schema: { type: string }
+      responses: { '200': { description: Logo 图片资源 } }
+  /api/assistants/import:
+    post:
+      tags: [Assistant]
+      summary: 导入 Assistant
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/assistants/{id}/avatar:
+    get:
+      tags: [Assistant]
+      summary: 获取 Assistant 头像
+      responses: { '200': { description: 头像图片资源 } }
+  /api/bedrock/test-connection:
+    post:
+      tags: [Provider]
+      summary: 测试 Bedrock 连接
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/channel/settings/{platform}:
+    get:
+      tags: [Channel]
+      summary: 获取渠道平台设置
+      parameters: [{ name: platform, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/channel/settings/sync:
+    post:
+      tags: [Channel]
+      summary: 同步渠道设置
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/channel/weixin/login:
+    get:
+      tags: [Channel]
+      summary: 获取微信登录事件流
+      responses: { '200': { description: SSE 登录事件流 } }
+  /api/cron/internal/system-resume:
+    post:
+      tags: [Cron]
+      summary: 恢复系统 Cron
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/cron/jobs/{id}/conversations:
+    get:
+      tags: [Cron]
+      summary: 获取 Cron 关联 Conversation
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/internal/conversation-cron/create:
+    post:
+      tags: [Cron]
+      summary: 创建 Conversation Cron
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/internal/conversation-cron/list:
+    get:
+      tags: [Cron]
+      summary: 列出 Conversation Cron
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/acp-adapters:
+    get:
+      tags: [Extension]
+      summary: 获取 ACP 扩展适配器
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/assistants:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Assistant
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/channel-plugins:
+    get:
+      tags: [Extension]
+      summary: 获取扩展渠道插件
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/mcp-servers:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 MCP 服务器
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/settings-tabs:
+    get:
+      tags: [Extension]
+      summary: 获取扩展设置页
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/agent-activity:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Agent 活动
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/webui:
+    get:
+      tags: [Extension]
+      summary: 获取扩展 Web UI
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/i18n:
+    post:
+      tags: [Extension]
+      summary: 获取扩展国际化资源
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/permissions:
+    post:
+      tags: [Extension]
+      summary: 获取扩展权限
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/risk-level:
+    post:
+      tags: [Extension]
+      summary: 获取扩展风险等级
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/enable:
+    post:
+      tags: [Extension]
+      summary: 启用扩展
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/extensions/disable:
+    post:
+      tags: [Extension]
+      summary: 禁用扩展
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/init:
+    post:
+      tags: [文件系统]
+      summary: 初始化文件快照
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/info:
+    post:
+      tags: [文件系统]
+      summary: 获取快照信息
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/compare:
+    post:
+      tags: [文件系统]
+      summary: 比较文件快照
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/baseline:
+    post:
+      tags: [文件系统]
+      summary: 设置快照基线
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/stage:
+    post:
+      tags: [文件系统]
+      summary: 暂存快照文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/stage-all:
+    post:
+      tags: [文件系统]
+      summary: 暂存全部快照文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/unstage:
+    post:
+      tags: [文件系统]
+      summary: 取消暂存快照文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/unstage-all:
+    post:
+      tags: [文件系统]
+      summary: 取消暂存全部快照文件
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/discard:
+    post:
+      tags: [文件系统]
+      summary: 丢弃快照修改
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/reset:
+    post:
+      tags: [文件系统]
+      summary: 重置文件快照
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/branches:
+    post:
+      tags: [文件系统]
+      summary: 获取快照分支
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/fs/snapshot/dispose:
+    post:
+      tags: [文件系统]
+      summary: 释放文件快照
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/oauth/check-status:
+    post:
+      tags: [MCP]
+      summary: 检查 MCP OAuth 状态
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/oauth/login:
+    post:
+      tags: [MCP]
+      summary: 发起 MCP OAuth 登录
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/oauth/logout:
+    post:
+      tags: [MCP]
+      summary: 退出 MCP OAuth 登录
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/mcp/oauth/authenticated:
+    get:
+      tags: [MCP]
+      summary: 查询 MCP OAuth 是否已认证
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/mailbox:
+    get:
+      tags: [Team]
+      summary: 获取 Team 邮箱消息
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/name:
+    patch:
+      tags: [Team]
+      summary: 重命名 Team
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/agents:
+    post:
+      tags: [Team]
+      summary: 添加 Team agent
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/agents/{slot_id}:
+    delete:
+      tags: [Team]
+      summary: 移除 Team agent
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/agents/{slot_id}/messages:
+    post:
+      tags: [Team]
+      summary: 向指定 Team agent 发送消息
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/agents/{slot_id}/attach:
+    post:
+      tags: [Team]
+      summary: 附加 Team agent
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/runs/{team_run_id}/cancel:
+    post:
+      tags: [Team]
+      summary: 取消 Team 运行
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/session:
+    post:
+      tags: [Team]
+      summary: 确保 Team session 已启动
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    delete:
+      tags: [Team]
+      summary: 停止 Team session
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/active-lease:
+    post:
+      tags: [Team]
+      summary: 续租 Team 活跃锁
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/teams/{id}/session-mode:
+    post:
+      tags: [Team]
+      summary: 设置 Team Session Mode
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/word-preview/refresh:
+    post:
+      tags: [Office]
+      summary: 刷新 Word 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/excel-preview/refresh:
+    post:
+      tags: [Office]
+      summary: 刷新 Excel 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/ppt-preview/refresh:
+    post:
+      tags: [Office]
+      summary: 刷新 PPT 预览
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/ppt-proxy/{port}:
+    get:
+      tags: [Office]
+      summary: 代理 PPT 预览服务
+      responses: { '200': { description: PPT 预览代理响应 } }
+  /api/ppt-proxy/{port}/{path}:
+    get:
+      tags: [Office]
+      summary: 代理 PPT 预览资源
+      responses: { '200': { description: PPT 预览代理响应 } }
+  /api/office-watch-proxy/{port}:
+    get:
+      tags: [Office]
+      summary: 代理 Office 监听服务
+      responses: { '200': { description: Office 监听代理响应 } }
+  /api/office-watch-proxy/{port}/{path}:
+    get:
+      tags: [Office]
+      summary: 代理 Office 监听资源
+      responses: { '200': { description: Office 监听代理响应 } }
+  /api/ws-token:
+    get:
+      tags: [认证]
+      summary: 获取 WebSocket 令牌
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/webui/change-password:
+    post:
+      tags: [认证]
+      summary: WebUI 修改密码
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/webui/change-username:
+    post:
+      tags: [认证]
+      summary: WebUI 修改用户名
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/webui/reset-password:
+    post:
+      tags: [认证]
+      summary: WebUI 重置密码
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/webui/generate-qr-token:
+    post:
+      tags: [认证]
+      summary: 生成二维码令牌
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/auth/internal/users/system:
+    get:
+      tags: [认证]
+      summary: 获取系统内部用户
+      security: []
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/auth/internal/users/{id}:
+    get:
+      tags: [认证]
+      summary: 按 ID 查找内部用户
+      security: []
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /internal/antigravity-hook/{conversation_id}:
+    post:
+      tags: [ACP 会话]
+      summary: Antigravity 本地 Hook
+      description: 本地 agent hook，使用每 Conversation runtime token，不使用普通用户会话认证。
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /qr-login:
+    get:
+      tags: [认证]
+      summary: 二维码登录页面
+      security: []
+      responses: { '200': { description: HTML 页面 } }
+  /api/agents/logos:
+    get:
+      tags: [Agent]
+      summary: 获取 Agent Logo 列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/aionrs/sessions:
+    get:
+      tags: [Agent]
+      summary: 获取 Aionrs 会话列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/management:
+    get:
+      tags: [Agent]
+      summary: 获取 Agent runtime 管理列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/{id}/health-check:
+    post:
+      tags: [Agent]
+      summary: 检查指定 Agent 健康状态
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/provider-health-check:
+    post:
+      tags: [Agent]
+      summary: 检查 Provider Agent 健康状态
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/{id}/enabled:
+    patch:
+      tags: [Agent]
+      summary: 设置 Agent 启用状态
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/{id}/overrides:
+    get:
+      tags: [Agent]
+      summary: 获取 Agent 覆盖配置
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    put:
+      tags: [Agent]
+      summary: 更新 Agent 覆盖配置
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/custom:
+    post:
+      tags: [Agent]
+      summary: 创建自定义 ACP Agent
+      description: 配置 ACP 子进程命令、参数、环境变量和默认启动行为。
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/custom/{id}:
+    put:
+      tags: [Agent]
+      summary: 更新自定义 ACP Agent
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    delete:
+      tags: [Agent]
+      summary: 删除自定义 ACP Agent
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/agents/custom/try-connect:
+    post:
+      tags: [Agent]
+      summary: 测试自定义 ACP Agent 连接
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/remote-agents:
+    get:
+      tags: [Agent]
+      summary: 获取远程 Agent 列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    post:
+      tags: [Agent]
+      summary: 创建远程 Agent
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/remote-agents/{id}:
+    get:
+      tags: [Agent]
+      summary: 获取远程 Agent 详情
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    put:
+      tags: [Agent]
+      summary: 更新远程 Agent
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+    delete:
+      tags: [Agent]
+      summary: 删除远程 Agent
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/remote-agents/test-connection:
+    post:
+      tags: [Agent]
+      summary: 测试远程 Agent 连接
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/remote-agents/{id}/handshake:
+    post:
+      tags: [Agent]
+      summary: 执行远程 Agent ACP 握手
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/side-question:
+    post:
+      tags: [Conversation]
+      summary: 提交侧边问题
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/usage:
+    get:
+      tags: [Conversation]
+      summary: 获取 Conversation 用量
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/conversations/{id}/workspace:
+    get:
+      tags: [Conversation]
+      summary: 浏览 Conversation workspace
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/extensions:
+    get:
+      tags: [Extension]
+      summary: 获取扩展市场列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/install:
+    post:
+      tags: [Extension]
+      summary: 从市场安装扩展
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/retry-install:
+    post:
+      tags: [Extension]
+      summary: 重试扩展安装
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/check-updates:
+    post:
+      tags: [Extension]
+      summary: 检查扩展更新
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/update:
+    post:
+      tags: [Extension]
+      summary: 更新扩展
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/hub/uninstall:
+    post:
+      tags: [Extension]
+      summary: 卸载扩展
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills:
+    get:
+      tags: [Extension]
+      summary: 获取 Skills 列表
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/import-history:
+    get:
+      tags: [Extension]
+      summary: 获取 Skill 导入历史
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/import-limits:
+    get:
+      tags: [Extension]
+      summary: 获取 Skill 导入限制
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/paths:
+    get:
+      tags: [Extension]
+      summary: 获取 Skill 路径
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/detect-paths:
+    get:
+      tags: [Extension]
+      summary: 检测 Skill 路径
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/detect-external:
+    get:
+      tags: [Extension]
+      summary: 检测外部 Skills
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/{name}:
+    delete:
+      tags: [Extension]
+      summary: 删除 Skill
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/info:
+    post:
+      tags: [Extension]
+      summary: 读取 Skill 信息
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/import:
+    post:
+      tags: [Extension]
+      summary: 导入 Skill
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/export-symlink:
+    post:
+      tags: [Extension]
+      summary: 导出 Skill 符号链接
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/scan:
+    post:
+      tags: [Extension]
+      summary: 扫描 Skills
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/builtin-rule:
+    post:
+      tags: [Extension]
+      summary: 读取内置 Rule
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/builtin-skill:
+    post:
+      tags: [Extension]
+      summary: 读取内置 Skill
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/materialize-for-agent:
+    post:
+      tags: [Extension]
+      summary: 为 Agent 实体化 Skills
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-rule/read:
+    post:
+      tags: [Extension]
+      summary: 读取 Assistant Rule
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-rule/write:
+    post:
+      tags: [Extension]
+      summary: 写入 Assistant Rule
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-rule/{id}:
+    delete:
+      tags: [Extension]
+      summary: 删除 Assistant Rule
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-skill/read:
+    post:
+      tags: [Extension]
+      summary: 读取 Assistant Skill
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-skill/write:
+    post:
+      tags: [Extension]
+      summary: 写入 Assistant Skill
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/assistant-skill/{id}:
+    delete:
+      tags: [Extension]
+      summary: 删除 Assistant Skill
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/market/enable:
+    post:
+      tags: [Extension]
+      summary: 启用 Skills 市场
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+  /api/skills/market/disable:
+    post:
+      tags: [Extension]
+      summary: 禁用 Skills 市场
+      requestBody: { $ref: '#/components/requestBodies/JsonObject' }
+      responses: { '200': { $ref: '#/components/responses/Success' } }
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: 登录后由服务端设置的会话 Cookie。
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 部署环境提供的 Bearer Token。
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: 资源 ID。
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Project ID。
+    PeId:
+      name: pe_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Project 文件夹资源 ID。
+    ConversationId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Conversation ID。
+    MessageId:
+      name: messageId
+      in: path
+      required: true
+      schema: { type: string }
+      description: 消息 ID。
+    CallId:
+      name: callId
+      in: path
+      required: true
+      schema: { type: string }
+      description: 工具调用或确认请求 ID。
+    OptionId:
+      name: option_id
+      in: path
+      required: true
+      schema: { type: string }
+      description: ACP config option ID，例如 mode 或 model。
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1 }
+      description: 页码。
+    PageSize:
+      name: page_size
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200 }
+      description: 每页数量。
+    Query:
+      name: q
+      in: query
+      required: false
+      schema: { type: string }
+      description: 搜索或过滤文本。
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+      description: 分页游标。
+  requestBodies:
+    JsonObject:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+          example: {}
+    Empty:
+      required: false
+      content: {}
+    MultipartFile:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: { type: string, format: binary, description: 要上传的文件 }
+              file_name: { type: string, description: 原始文件名 }
+              conversation_id: { type: string, description: 关联 Conversation ID }
+  responses:
+    Success:
+      description: 请求成功。具体 data 结构由接口业务类型决定。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiResponse'
+    Error:
+      description: 请求失败。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ApiResponse:
+      type: object
+      description: AionCore 通用成功响应包装。
+      properties:
+        success: { type: boolean, description: 是否成功 }
+        data: { description: 业务响应数据 }
+        message: { type: string, nullable: true, description: 可选提示信息 }
+      required: [success]
+    ErrorResponse:
+      type: object
+      description: AionCore 通用错误响应。
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string, description: 错误信息 }
+        code: { type: string, description: 稳定错误代码 }
+        details: { description: 可选错误详情 }
+      required: [success, error, code]
+    ConversationList:
+      type: object
+      description: Conversation 分页结果。
+      properties:
+        items: { type: array, items: { type: object } }
+        total: { type: integer, format: int64 }
+        has_more: { type: boolean }
+      required: [items, total, has_more]
+    AcpConfigOption:
+      type: object
+      description: Agent 声明的 ACP 会话配置项。
+      properties:
+        id: { type: string, description: 配置项 ID }
+        label: { type: string, nullable: true, description: 显示名称 }
+        category: { type: string, nullable: true, description: 配置类别，例如 mode 或 model }
+        type: { type: string, description: 配置控件类型 }
+        current_value: { type: string, nullable: true, description: 当前值 }
+        options: { type: array, items: { type: object }, description: 可选值列表 }
+      required: [id, type]

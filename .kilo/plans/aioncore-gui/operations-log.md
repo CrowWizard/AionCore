@@ -71,3 +71,4 @@
 - 2026-08-16：在 AionCore 原生 Settings 的通用页加入只读环境信息：当前本地时间、当前工作目录和 Workspace 根目录，均从 GUI 运行时状态读取，不写入配置。验证通过前序 GUI 编译、测试和 Clippy。
 - 2026-08-16：确认 GitHub fork 上游为 `iOfficeAI/AionCore`，新增 `upstream` 远程并抓取 `upstream/main`。本地 `main` 从 `a621ed88` 快进到 `77acec68`（上游新增 42 个提交），随后无冲突合并到 `dev`，生成合并提交 `9c4949cb`。本次仅同步并合并，未推送远程分支。
 - 2026-08-16：接入上游 ACP 会话能力：Conversation 打开时通过 `runtime/ensure` 获取 agent 声明的 select config options，通过 slash-commands API 获取命令；输入 `/` 时使用现有建议控件展示并插入 agent command。配置项动态显示于输入区上方，修改调用 config-options API；`pending_next_turn` 标记为下一轮生效。空闲 `message.stream` 中的 `acp_config_option` 与 `acp_mode_info` 直接更新会话配置状态，不再被消息 reducer 的空 msg/turn id 校验丢弃。新增 pending 清理测试；验证通过 GUI 35 个库测试和 Clippy。
+- 2026-08-16：基于当前生产 Rust Router 路由声明生成仓库根目录 `openapi.yaml`：使用 OpenAPI 3.1、中文接口说明、认证说明、公共响应、路径参数和请求体说明，覆盖认证、Project、Conversation/ACP、文件、Provider、MCP、Agent、Assistant、Channel、Team、Cron、Extension/Skills/Hub、Office、Shell 和系统模块。PyYAML 校验通过，共 219 个路径、244 个操作；与生产路由自动对照无遗漏。
