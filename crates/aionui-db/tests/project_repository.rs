@@ -102,7 +102,17 @@ async fn create_project_with_workspace_entry_falls_back_on_workspace_conflict() 
 
 #[tokio::test]
 async fn list_projects_is_scoped_to_owner_and_ordered_by_latest_update() {
-    let (store, _db) = store().await;
+    let (store, db) = store().await;
+    sqlx::query(
+        "INSERT INTO users (id, user_type, username, password_hash, status, session_generation, created_at, updated_at) \
+         VALUES (?, 'local', ?, 'hash', 'active', 0, 1, 1)",
+    )
+    .bind("other_user")
+    .bind("other_user")
+    .execute(db.pool())
+    .await
+    .unwrap();
+
     let first_folder = store.upsert_folder("file:///first", "file:///first").await.unwrap();
     let second_folder = store.upsert_folder("file:///second", "file:///second").await.unwrap();
     let other_folder = store.upsert_folder("file:///other", "file:///other").await.unwrap();

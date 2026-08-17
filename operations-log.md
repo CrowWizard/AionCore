@@ -45,3 +45,9 @@
 - 已生成 `docs/database-schema.zh-CN.md`，包含数据字典、关系图、`user_id` 可空性矩阵、`system_default_user` 使用边界和维护风险。
 - 结论：builtin/internal `agent_metadata`、system builtin `assistant_definitions`、builtin `skills` 使用 `NULL` 表示全局；`folders` 是机器级全局资源且没有 `user_id`；其余用户级字段原则上不得为 NULL，`system_default_user` 仅用于系统初始化和历史单用户兼容回填。
 - 本次仅新增/更新 Markdown 文档，未修改数据库 schema、迁移或运行时代码；未执行数据库迁移和 workspace 编译测试。
+
+## 2026-08-17 修复 Project Repository 测试外键失败
+
+- 失败原因：`list_projects_is_scoped_to_owner_and_ordered_by_latest_update` 使用 `other_user` 创建第二个 owner 的 Project，但 migration 030 已为 `projects.user_id` 增加 `REFERENCES users(id)`，测试 fixture 未先创建该用户，SQLite 返回错误 787。
+- 修复方式：在测试准备阶段插入合法的 `other_user` 用户记录；未放宽外键约束，也未修改业务实现。
+- 验证结果：`cargo nextest run -p aionui-db --test project_repository --no-fail-fast` 通过，10/10 测试通过。
